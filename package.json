@@ -1,0 +1,57 @@
+{
+  "name": "dsh-session-delete",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "全中文 DSH 会话删除插件：侧栏会话行内删除，删除进插件设置页的回收站。",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "src/**/*.mjs",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0-rc.1 <0.3.0-0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-layout"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test",
+    "selfcheck": "node tests/e2e.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thatgfsj-dsh/dsh-session-delete.git"
+  },
+  "homepage": "https://github.com/thatgfsj-dsh/dsh-session-delete",
+  "bugs": {
+    "url": "https://github.com/thatgfsj-dsh/dsh-session-delete/issues"
+  },
+  "private": false
+}
