@@ -108,27 +108,42 @@ async function repairSymlinks(sourceRoot, targetRoot) {
   return repaired
 }
 
-/** 从真实会话树里挑一个样例会话并复制到临时 HOME；返回会话候选 ID。 */
-async function copySampleSession() {
+/** 从真实会话树里挑若干个样例会话并复制到临时 HOME。 */
+async function copySampleSessions(limit) {
   const realSessions = join(REAL_HOME, 'sessions')
   if (!existsSync(realSessions)) throw new Error(`没有找到真实会话目录：${realSessions}`)
   const projects = (await readdir(realSessions, { withFileTypes: true })).filter(entry => entry.isDirectory())
+  const copied = []
+  const sampleFilter = process.env.DSH_E2E_SAMPLE
   for (const project of projects) {
     const projectDir = join(realSessions, project.name)
     const sessions = (await readdir(projectDir, { withFileTypes: true })).filter(entry => entry.isDirectory())
     for (const session of sessions) {
+      if (copied.length >= limit) return copied
+      if (sampleFilter !== undefined && sampleFilter !== '' && !session.name.includes(sampleFilter)) continue
       const sourceDir = join(projectDir, session.name)
       const logs = (await readdir(sourceDir)).filter(name => name.endsWith('.jsonl.zstd'))
       if (logs.length === 0) continue
-      const sampleFilter = process.env.DSH_E2E_SAMPLE
-      if (sampleFilter !== undefined && sampleFilter !== '' && !session.name.includes(sampleFilter)) continue
       const targetDir = join(tempHome, 'sessions', project.name, session.name)
       await mkdir(targetDir, { recursive: true })
       for (const log of logs) await copyFile(join(sourceDir, log), join(targetDir, log))
-      return { projectKey: project.name, dirName: session.name, targetDir }
+      copied.push({ projectKey: project.name, dirName: session.name, targetDir })
     }
   }
-  throw new Error('真实会话树里没有可复制的会话')
+  if (copied.length === 0) throw new Error('真实会话树里没有可复制的会话')
+  return copied
+}
+
+/** 用 inspect 解析一个目录名对应的真实 sessionId（兼容 session- 前缀/裸 UUID）。 */
+async function resolveSessionId(origin, dirName) {
+  const candidates = [dirName]
+  if (dirName.startsWith('session-')) candidates.push(dirName.slice('session-'.length))
+  else candidates.push(`session-${dirName}`)
+  for (const candidate of candidates) {
+    const { payload } = await api(origin, `/inspect?sessionId=${encodeURIComponent(candidate)}`)
+    if (payload.ok === true && payload.session?.exists === true) return { sessionId: candidate, inspected: payload }
+  }
+  return { sessionId: null, inspected: null }
 }
 
 /** 启动临时 dsh web，返回 origin 与页面 HTML。 */
@@ -197,28 +212,20 @@ try {
   const repaired = await repairSymlinks(sourceProfile, targetProfile)
   console.log(`临时 profile 已复制，修复符号链接 ${repaired} 个`)
 
-  const sample = await copySampleSession()
-  console.log(`样例会话：${sample.projectKey}/${sample.dirName}`)
+  const sampleCount = Math.max(1, Number(process.env.DSH_E2E_SAMPLES ?? 3))
+  const samples = await copySampleSessions(sampleCount)
+  if (samples.length < 2) throw new Error(`批量用例至少需要 2 个样例会话，当前只复制到 ${samples.length} 个`)
+  const sample = samples[0]
+  console.log(`样例会话：${samples.map(item => `${item.projectKey}/${item.dirName}`).join('、')}`)
 
   const { origin, page, status, stdout } = await startServer()
   check('临时实例已启动', origin !== '', origin)
   check('鉴权后的首页可访问', status === 200, `HTTP ${status}`)
   check('宿主插件已挂载', stdout.includes('[dsh-session-delete] 宿主半边已挂载'))
 
-  const candidates = [sample.dirName]
-  if (sample.dirName.startsWith('session-')) candidates.push(sample.dirName.slice('session-'.length))
-  else candidates.push(`session-${sample.dirName}`)
-
-  let sessionId = null
-  let inspected = null
-  for (const candidate of candidates) {
-    const { payload } = await api(origin, `/inspect?sessionId=${encodeURIComponent(candidate)}`)
-    if (payload.ok === true && payload.session?.exists === true) {
-      sessionId = candidate
-      inspected = payload
-      break
-    }
-  }
+  const resolved = await resolveSessionId(origin, sample.dirName)
+  const sessionId = resolved.sessionId
+  const inspected = resolved.inspected
   check('inspect 能读到样例会话', sessionId !== null, sessionId ?? '两个命名候选都读不到')
 
   if (sessionId === null) throw new Error('inspect 失败，后续链路无法继续')
@@ -248,6 +255,41 @@ try {
   check('彻底删除后目录不存在', !existsSync(sample.targetDir), sample.targetDir)
   const inTrashAfterPurge = await api(origin, '/trash')
   check('彻底删除不进回收站', (inTrashAfterPurge.payload.entries ?? []).length === 0)
+
+  // 批量管理：会话清单 + 批量删除
+  const sessionsList = await api(origin, '/sessions')
+  check('会话清单接口可用', sessionsList.payload.ok === true && Array.isArray(sessionsList.payload.sessions), `共 ${sessionsList.payload.sessions?.length ?? 0} 个`)
+  check('会话清单带大小与分组字段', (sessionsList.payload.sessions ?? []).every(item => typeof item.sessionId === 'string' && typeof item.sizeBytes === 'number' && 'workspace' in item))
+
+  const batchTargets = []
+  for (const item of samples.slice(1)) {
+    const found = await resolveSessionId(origin, item.dirName)
+    if (found.sessionId !== null) batchTargets.push({ ...item, sessionId: found.sessionId })
+  }
+  check('批量目标会话已就绪', batchTargets.length >= 1, `解析到 ${batchTargets.length} 个`)
+
+  const listIds = new Set((sessionsList.payload.sessions ?? []).map(item => item.sessionId))
+  check('会话清单包含样例会话', batchTargets.every(item => listIds.has(item.sessionId)))
+
+  const trashBatch = batchTargets.slice(0, 1)
+  const batchTrash = await api(origin, '/batch-delete', { method: 'POST', body: { sessionIds: trashBatch.map(item => item.sessionId), mode: 'trash', stopIfRunning: false } })
+  check('批量移入回收站成功', batchTrash.payload.ok === true && batchTrash.payload.summary?.succeeded === trashBatch.length, JSON.stringify(batchTrash.payload.summary))
+  check('批量删除后目录消失', trashBatch.every(item => !existsSync(item.targetDir)))
+  const trashAfterBatch = await api(origin, '/trash')
+  check('回收站收到批量条目', trashBatch.every(item => (trashAfterBatch.payload.entries ?? []).some(entry => entry.sessionId === item.sessionId)))
+
+  if (batchTargets.length >= 2) {
+    const purgeTarget = batchTargets[1]
+    const batchPurge = await api(origin, '/batch-delete', { method: 'POST', body: { sessionIds: [purgeTarget.sessionId], mode: 'purge', stopIfRunning: false } })
+    check('批量彻底删除成功', batchPurge.payload.ok === true && batchPurge.payload.summary?.succeeded === 1, JSON.stringify(batchPurge.payload.summary))
+    check('批量彻底删除后目录不存在', !existsSync(purgeTarget.targetDir))
+  }
+
+  const badBatch = await api(origin, '/batch-delete', { method: 'POST', body: { sessionIds: ['../etc/passwd'], mode: 'trash' } })
+  check('批量接口拒绝非法会话 ID', badBatch.status === 400 && String(badBatch.payload?.code ?? '').includes('非法'), JSON.stringify(badBatch.payload))
+
+  const emptyAfterBatch = await api(origin, '/empty', { method: 'POST', body: { onlyExpired: false } })
+  check('清空批量回收站', emptyAfterBatch.payload.ok === true)
 
   const malformed = await api(origin, '/settings', { method: 'POST', body: { retentionDays: null } })
   check('畸形 retentionDays 回落到默认 30', malformed.payload.ok === true && malformed.payload.settings?.retentionDays === 30, JSON.stringify(malformed.payload.settings))

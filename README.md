@@ -11,6 +11,7 @@
 - **中文确认弹窗**：显示会话标题、ID、工作区、占用空间、运行状态、子代理数量、将清理的内容。
 - **运行中保护**：运行中的会话默认拒绝删除；勾选「先停止运行」后走官方 `workspace/session-stop` 停止回合、子代理、后台任务与定时提醒，再删除。
 - **子代理整树**：有子代理会话时默认一并删除；任一子代理仍在运行则整体拒绝，避免留下半棵树。
+- **批量管理**（v0.1.1）：侧栏「工作区」标题行右侧图标（搜索 / 视图选项 / 添加工作区之后）——按工作区分组列出会话，过滤（全部/未归档/已归档）、搜索、全选/反选，批量移入回收站或彻底删除，逐条报告失败。
 - **回收站**（插件设置页「会话回收站」）：列表、还原、彻底删除、清空、保留天数（7/15/30/90 天或永久）、启动时清理、用量统计。
 - **即时刷新**：删除后广播 `api-session/removed`，侧栏行立即消失；还原后主动刷新会话列表。
 - **失败可解释**：分步执行并记录每一步；可回滚项回滚；返回中文错误与残留文件清单，不静默失败。
@@ -41,6 +42,7 @@ dsh plugin --profile web remove dsh-session-delete
 1. **删除**：在侧栏会话行悬停，点垃圾桶；或打开会话行 `⋯` 菜单点「删除会话…」。
 2. 在弹窗里确认会话信息，选择 **移入回收站**（默认）或 **彻底删除**；运行中的会话需先勾选「先停止运行」。
 3. **还原 / 彻底删除**：打开 设置 →「会话回收站」，每条记录可还原或彻底删除；也可以清空回收站、调整保留天数。
+4. **批量管理**：点侧栏「工作区」标题行最右侧的清单图标，勾选会话后批量「移入回收站」或「彻底删除」；运行中的根会话可勾选「先停止运行」，有运行中子代理的会话会被整体拒绝。
 
 ### 删除会清理什么
 
@@ -85,11 +87,18 @@ $DSH_HOME/session-delete/
 ## 开发与测试
 
 ```bash
-# 单元测试（纯函数、事务顺序、回收站、路径安全）
+# 客户端 bundle 由 src/client/*.js 生成（改了源码后必须重新生成）
+node scripts/build-client.mjs
+node scripts/build-client.mjs --check   # 只校验 client.js 是否与源码同步
+
+# 单元测试（纯函数、事务顺序、回收站、路径安全、批量、会话清单）
 node --test
 
-# 隔离环境端到端（需要先把本仓库装进某个 web profile）
+# 隔离环境端到端（需要先把本仓库装进某个 web profile；自建临时实例，不碰线上）
 node tests/e2e.mjs
+
+# 批量管理 UI 冒烟（可选，需要本机 Chrome；同样自建临时实例，不碰线上）
+node scripts/ui-smoke.mjs
 ```
 
 端到端脚本会：创建临时 `DSH_HOME`、复制一个真实会话到临时目录、用随机端口启动 `dsh web`，然后调用
@@ -100,21 +109,30 @@ node tests/e2e.mjs
 
 - 宿主半边：单测 35 项全绿；隔离环境 HTTP 全链路（inspect/delete/trash/restore/purge/settings）通过。
 - 客户端半边：headless Chrome（临时实例）实测行内按钮、`⋯` 菜单「删除会话…」、中文确认弹窗、回收站列表/还原/彻底删除均可用，控制台无 error / exception；manifest、slot 契约、bundle 组合静态与运行时检查通过。
-- **仍需真机点验**：运行中 / 运行中子代理状态下的弹窗、明暗主题切换、删除当前会话后的主视图清空（已实现，调用官方 `uiWorkspace.clearMain()`）、真实鼠标操作。
+- v0.1.1 批量管理：宿主接口与面板逻辑已测；标题行入口通过 DOM 锚点挂载（官方无公开插槽），官方 UI 大改版时可能失效，失效后会自动降级到侧栏底部入口。
+- v0.1.1 批量管理 UI 已用 headless Chrome 在自建临时实例上实测：标题行入口出现、面板打开、会话分组渲染、已选计数正常（见 `node scripts/ui-smoke.mjs`）。
+- **仍需真机点验**：批量面板拖拽/滚动交互、运行中 / 运行中子代理状态下的弹窗、明暗主题切换、删除当前会话后的主视图清空（已实现，调用官方 `uiWorkspace.clearMain()`）、真实鼠标操作。
 
 ## 目录结构
 
 ```
-index.js                    宿主入口：路由注册、启动清理
-src/host/session-meta.mjs   元数据采集（持久化/活体/工作区/子代理树/运行态/大小）
-src/host/stop.mjs           停止运行中会话并等待静默
-src/host/detach.mjs         摘活体、清工作区/归档/置顶、清投影缓存、还原登记
-src/host/trash.mjs          回收站存储与策略
-src/host/execute.mjs        删除事务编排、回滚、结果汇总
+index.js                      宿主入口：路由注册、启动清理
+src/host/session-meta.mjs     元数据采集（持久化/活体/工作区/子代理树/运行态/大小）
+src/host/stop.mjs             停止运行中会话并等待静默
+src/host/detach.mjs           摘活体、清工作区/归档/置顶、清投影缓存、还原登记
+src/host/trash.mjs            回收站存储与策略
+src/host/execute.mjs          删除事务编排、回滚、结果汇总
+src/host/sessions-list.mjs    批量管理用的轻量会话清单
+src/host/batch.mjs            批量删除参数校验与逐条执行
 src/host/{http,errors,paths,fs-util,audit}.mjs  基础设施
-client.js                   行内按钮 / 菜单项 / 确认弹窗 / 设置页回收站
-locale/{zh,en}.json         展示元数据（两份均为中文）
-tests/                      单元测试与隔离端到端脚本
+src/client/base.js            词典、工具函数、样式、共享 store
+src/client/delete-ui.js       行内按钮 / 菜单项 / 确认弹窗 / 设置页回收站
+src/client/batch-ui.js        批量管理：标题行入口 + 面板
+src/client/entry.js           slot 注册与 apply
+client.js                     由上面四个部件生成（勿手改）
+scripts/build-client.mjs      客户端构建脚本
+locale/{zh,en}.json           展示元数据（两份均为中文）
+tests/                        单元测试与隔离端到端脚本
 ```
 
 ## 许可

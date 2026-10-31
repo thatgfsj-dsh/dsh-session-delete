@@ -8,10 +8,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { runInNewContext } from 'node:vm'
+import { buildClient } from '../scripts/build-client.mjs'
 
 /** 加载 client.js 并返回模块描述对象。 */
 async function loadClient() {
-  const source = await readFile(new URL('../client.js', import.meta.url), 'utf8')
+  // 用未压缩的构建结果做 vm 加载，便于定位行；生产 client.js 另有同步性断言。
+  const source = await buildClient({ compact: false })
   // 与参考实现相同的手法：把内部纯函数挂到 checks 上，便于在 Node 里直接断言。
   const patched = source.replace(
     "    return {\n      inject: ['slots', 'locale'],",
@@ -38,7 +40,7 @@ test('客户端模块 id 必须等于包名', async () => {
   assert.equal(typeof loaded.factory, 'function')
 })
 
-test('apply 注册四个 slot，顺序与 id 符合契约', async () => {
+test('apply 注册五个 slot，顺序与 id 符合契约', async () => {
   const { loaded } = await loadClient()
   const registrations = []
   const dictionaries = []
@@ -62,6 +64,7 @@ test('apply 注册四个 slot，顺序与 id 符合契约', async () => {
   assert.deepEqual(Object.keys(byName).sort(), [
     'settings.section',
     'shell.overlay',
+    'sidebar.footer.action',
     'sidebar.workspaces.session.menu.item',
     'sidebar.workspaces.session.row.action',
   ])
@@ -73,6 +76,8 @@ test('apply 注册四个 slot，顺序与 id 符合契约', async () => {
   assert.equal(byName['settings.section'].id, 'dsh-session-delete')
   assert.equal(typeof byName['settings.section'].label, 'function')
   assert.equal(byName['settings.section'].label(), 'settings.title')
+  assert.equal(byName['sidebar.footer.action'].id, 'dsh-session-delete-batch')
+  assert.equal(byName['sidebar.footer.action'].order, 120)
   for (const item of registrations) assert.equal(item.options.locale, 'sessionDelete')
   assert.equal(dictionaries.length, 1)
   assert.equal(dictionaries[0][0], 'sessionDelete')
@@ -100,4 +105,10 @@ test('纯函数：字节格式化、ID 截断、错误文本', async () => {
     if (key === 'common.yes' || key === 'common.no') continue
     assert.match(value, /[\u4e00-\u9fff]/, `词条 ${key} 不是中文：${value}`)
   }
+})
+
+test('提交的 client.js 与 src/client/*.js 构建结果一致', async () => {
+  const committed = await readFile(new URL('../client.js', import.meta.url), 'utf8')
+  assert.equal(committed, await buildClient(), 'client.js 未同步：运行 node scripts/build-client.mjs')
+  assert.ok(committed.split('\n').length < 1000, '生成的 client.js 也要控制在 1000 行内')
 })
