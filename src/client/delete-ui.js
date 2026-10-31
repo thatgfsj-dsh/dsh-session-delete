@@ -274,7 +274,8 @@
       const notice = useNotice()
       return h(React.Fragment, null,
         h(BatchHeaderMount, { t }),
-        h(BatchPanel, { ctx, t }),
+        h(BatchRowInjector, { t }),
+        h(BatchToolbar, { ctx, t }),
         request === null ? null : h(DeleteConfirmDialog, { key: `${request.sessionId}:${request.nonce}`, request, ctx, t }),
         notice === null ? null : h('div', {
           style: styles.notice,

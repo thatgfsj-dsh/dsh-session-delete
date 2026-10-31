@@ -40,7 +40,7 @@ test('客户端模块 id 必须等于包名', async () => {
   assert.equal(typeof loaded.factory, 'function')
 })
 
-test('apply 注册五个 slot，顺序与 id 符合契约', async () => {
+test('apply 注册六个 slot，顺序与 id 符合契约', async () => {
   const { loaded } = await loadClient()
   const registrations = []
   const dictionaries = []

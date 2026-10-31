@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-delete",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "全中文 DSH 会话删除插件：侧栏会话行内删除，删除进插件设置页的回收站。",
   "license": "MIT",
