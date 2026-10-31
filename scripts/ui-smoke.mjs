@@ -143,6 +143,13 @@ try {
     await appendFile(patchPath, '\n# ui-smoke：禁掉启动动画\n- id: boot-animation\n  disabled: true\n', 'utf8')
   }
   const samples = await copySamples(2)
+  // 侧栏只展示工作区记账里的会话：把真实 workspace.json 与投影缓存一并复制到临时 HOME。
+  await mkdir(join(tempHome, 'storages'), { recursive: true })
+  await copyFile(join(REAL_HOME, 'storages', 'workspace.json'), join(tempHome, 'storages', 'workspace.json'))
+  const projcacheSource = join(REAL_HOME, 'storages', 'session_projcache')
+  if (existsSync(projcacheSource)) {
+    await cp(projcacheSource, join(tempHome, 'storages', 'session_projcache'), { recursive: true, verbatimSymlinks: true })
+  }
   check('临时 profile 就绪', existsSync(copy), `修复符号链接 ${repaired} 个`)
   check('复制样例会话', samples >= 2, `${samples} 个`)
 
@@ -191,14 +198,17 @@ try {
 
   await evaluate(page, 'document.querySelector("[data-dsh-session-delete-batch] button").click()')
   await sleep(800)
-  const dialog = await evaluate(page, 'document.querySelector("[role=dialog][aria-label=批量管理]") !== null')
-  check('批量管理面板打开', dialog === true)
+  const boxes = await evaluate(page, 'document.querySelectorAll("input[type=checkbox][aria-label=选择此会话]").length')
+  check('会话行前面出现勾选框', Number(boxes) >= 1, `${boxes} 个勾选框`)
 
-  const rows = await evaluate(page, 'document.querySelectorAll("[role=dialog][aria-label=批量管理] input[type=checkbox]").length')
-  check('面板列出会话（含勾选框）', Number(rows) >= 3, `${rows} 个勾选框`)
+  const toolbar = await evaluate(page, 'document.querySelector("[role=region][aria-label=批量管理]") !== null')
+  check('底部批量操作栏出现', toolbar === true)
 
-  const selectedText = await evaluate(page, 'document.querySelector("[role=dialog][aria-label=批量管理]").textContent.includes("已选 0 个")')
-  check('面板显示已选计数', selectedText === true)
+  await evaluate(page, 'document.querySelector("input[type=checkbox][aria-label=选择此会话]").click()')
+  await sleep(300)
+  const barText = await evaluate(page, 'document.querySelector("[role=region][aria-label=批量管理]").textContent')
+  check('已选计数更新', String(barText).includes('已选 1 个'), String(barText).slice(0, 80))
+  check('批量按钮齐全', ['移入回收站', '彻底删除', '退出批量', '全选', '清空选择'].every(label => String(barText).includes(label)))
 
   // 临时 HOME 没有凭据，会弹「开始使用」引导层；截屏前关掉它。
   const dismissedOnboarding = await evaluate(page, `(() => {

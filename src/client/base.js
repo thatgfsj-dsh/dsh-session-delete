@@ -123,6 +123,9 @@
       'batch.refresh': '刷新',
       'batch.close': '关闭',
       'batch.headerFailed': '标题行入口不可用，已放到侧栏底部',
+      'batch.exit': '退出批量',
+      'batch.checkbox': '选择此会话',
+      'batch.hostUnavailable': '宿主接口不可用：请重启 dsh web 后重试（批量接口需要宿主 0.1.1+）',
     }
     const en = TEXT
 

@@ -28,7 +28,7 @@ const TEXT = { 'action.delete': '删除会话…', 'action.deleteHint': '删除�
 'batch.selectAll': '全选', 'batch.invert': '反选', 'batch.clear': '清空选择', 'batch.selected': '已选 {n} 个', 'batch.stop': '先停止运行中的会话', 'batch.trash': '移入回收站', 'batch.purge': '彻底删除', 'batch.purgeConfirm': '确认彻底删除',
 'batch.cancel': '取消', 'batch.loading': '正在读取会话…', 'batch.loadFailed': '读取会话失败：{detail}', 'batch.empty': '没有符合条件的会话', 'batch.none': '请先勾选会话', 'batch.working': '正在处理 {total} 个会话…', 'batch.summary': '成功 {ok} 个，失败 {fail} 个',
 'batch.failures': '失败项', 'batch.archived': '已归档', 'batch.pinned': '已置顶', 'batch.running': '运行中', 'batch.subagents': '子代理 {n}', 'batch.ungrouped': '未分组', 'batch.refresh': '刷新', 'batch.close': '关闭',
-'batch.headerFailed': '标题行入口不可用，已放到侧栏底部', }
+'batch.headerFailed': '标题行入口不可用，已放到侧栏底部', 'batch.exit': '退出批量', 'batch.checkbox': '选择此会话', 'batch.hostUnavailable': '宿主接口不可用：请重启 dsh web 后重试（批量接口需要宿主 0.1.1+）', }
 const en = TEXT
 /** 把字节数变成人话。 */
 function formatBytes(bytes) { const value = Number(bytes)
@@ -296,8 +296,9 @@ return h('div', { style: styles.backdrop, role: 'presentation', onMouseDown: (ev
 /** `shell.overlay` 入口：弹窗 + 结果提示。 */
 function OverlayHost({ ctx, t }) { const request = useDialogRequest()
 const notice = useNotice()
-return h(React.Fragment, null, h(BatchHeaderMount, { t }), h(BatchPanel, { ctx, t }), request === null ? null : h(DeleteConfirmDialog, { key: `${request.sessionId}:${request.nonce}`, request, ctx, t }),
-notice === null ? null : h('div', { style: styles.notice, role: 'status', }, notice.text, h('button', { type: 'button', 'aria-label': '关闭提示', style: styles.noticeClose, onClick: () => noticeStore.clear(), }, '×')), )
+return h(React.Fragment, null, h(BatchHeaderMount, { t }), h(BatchRowInjector, { t }), h(BatchToolbar, { ctx, t }),
+request === null ? null : h(DeleteConfirmDialog, { key: `${request.sessionId}:${request.nonce}`, request, ctx, t }), notice === null ? null : h('div', { style: styles.notice, role: 'status', }, notice.text, h('button', {
+type: 'button', 'aria-label': '关闭提示', style: styles.noticeClose, onClick: () => noticeStore.clear(), }, '×')), )
 }
 /** 设置页「会话回收站」。 */
 function TrashSettingsSection({ ctx, t }) { const [state, setState] = useState({ phase: 'loading', entries: [], usage: { count: 0, bytes: 0 }, settings: null, error: '' })
@@ -363,9 +364,18 @@ style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' },
 void act('empty', () => apiPost('/empty', { onlyExpired: false }))
 }, }, armed === 'empty' ? t('settings.emptyConfirm') : t('settings.emptyTrash')), ), ), )
 }
-const batchStore = { value: { open: false, headerStatus: 'pending' }, listeners: new Set(), emit() { for (const listener of [...this.listeners]) listener() },
-subscribe(listener) { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }, getSnapshot() { return this.value }, setOpen(open) { this.value = { ...this.value, open }; this.emit() },
-setHeaderStatus(status) { if (this.value.headerStatus === status) return
+const batchStore = { value: { mode: false, selected: new Set(), headerStatus: 'pending' }, listeners: new Set(), emit() { for (const listener of [...this.listeners]) listener() },
+subscribe(listener) { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }, getSnapshot() { return this.value }, setMode(mode) {
+this.value = { ...this.value, mode, selected: mode ? this.value.selected : new Set() }
+this.emit()
+}, toggle(id) { const next = new Set(this.value.selected)
+if (next.has(id)) next.delete(id)
+else next.add(id)
+this.value = { ...this.value, selected: next }
+this.emit()
+}, select(ids) { this.value = { ...this.value, selected: new Set(ids) }
+this.emit()
+}, clear() { this.value = { ...this.value, selected: new Set() }; this.emit() }, setHeaderStatus(status) { if (this.value.headerStatus === status) return
 this.value = { ...this.value, headerStatus: status }
 this.emit()
 }, }
@@ -373,39 +383,25 @@ const subscribeBatch = listener => batchStore.subscribe(listener)
 const getBatchSnapshot = () => batchStore.getSnapshot()
 function useBatch() { return useSyncExternalStore(subscribeBatch, getBatchSnapshot, getBatchSnapshot)
 }
-const batchStyles = { backdrop: { position: 'fixed', inset: 0, zIndex: 4050, display: 'flex', alignItems: 'center', justifyContent: 'center',
-background: 'var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, 0.42))', pointerEvents: 'auto', }, card: { width: 'min(820px, 94vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column',
-padding: '18px', borderRadius: '12px', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)',
-boxShadow: '0 12px 40px var(--dsw-alias-bg-overlay, rgba(0, 0, 0, 0.28))', }, header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' },
-title: { margin: 0, fontSize: '16px', fontWeight: 600 }, desc: { margin: '4px 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)' },
-close: { border: 'none', background: 'transparent', color: 'var(--dsw-alias-label-tertiary)', fontSize: '18px', cursor: 'pointer', lineHeight: 1 },
-toolbar: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', margin: '12px 0 10px' },
-select: { padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', fontSize: '12px' },
-search: { flex: 1, minWidth: '180px', padding: '5px 9px', borderRadius: '6px', border: '1px solid var(--dsw-alias-border-l1)', background: 'transparent', color: 'var(--dsw-alias-label-primary)', fontSize: '12px' },
-smallButton: { padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--dsw-alias-border-l1)', background: 'transparent', color: 'var(--dsw-alias-label-primary)', fontSize: '12px', cursor: 'pointer' },
-selected: { marginLeft: 'auto', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' },
-list: { flex: 1, minHeight: '120px', overflow: 'auto', border: '1px solid var(--dsw-alias-border-l1)', borderRadius: '10px', padding: '6px' }, group: { marginBottom: '8px' },
-groupTitle: { padding: '6px 8px 4px', fontSize: '12px', fontWeight: 600, color: 'var(--dsw-alias-label-tertiary)', overflowWrap: 'anywhere' },
-row: { display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' },
-rowTitle: { flex: 1, minWidth: 0, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, rowMeta: { flex: 'none', fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' },
-badge: { flex: 'none', padding: '0 6px', borderRadius: '999px', fontSize: '11px', lineHeight: '16px', background: 'var(--dsw-alias-interactive-bg-hover)', color: 'var(--dsw-alias-label-secondary)' },
-badgeWarn: { flex: 'none', padding: '0 6px', borderRadius: '999px', fontSize: '11px', lineHeight: '16px', background: 'transparent', border: '1px solid var(--dsw-alias-state-error-primary)', color: 'var(--dsw-alias-state-error-primary)' },
-hint: { padding: '10px 4px', fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' }, error: { padding: '10px 4px', fontSize: '12px', color: 'var(--dsw-alias-state-error-primary)', whiteSpace: 'pre-wrap' },
-failures: { marginTop: '8px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-state-error-primary)', fontSize: '12px', color: 'var(--dsw-alias-state-error-primary)', maxHeight: '120px', overflow: 'auto', whiteSpace: 'pre-wrap' },
-footer: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '12px' },
-checkboxRow: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' },
-primary: { padding: '7px 14px', borderRadius: '8px', border: '1px solid transparent', background: 'var(--dsw-alias-button-primary-fill)', color: 'var(--dsw-alias-label-primary-foreground)', fontSize: '13px', cursor: 'pointer' },
-danger: { padding: '7px 14px', borderRadius: '8px', border: '1px solid var(--dsw-alias-state-error-primary)', background: 'transparent', color: 'var(--dsw-alias-state-error-primary)', fontSize: '13px', cursor: 'pointer' },
-disabled: { opacity: 0.5, cursor: 'not-allowed' }, progress: { marginLeft: 'auto', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' },
+const batchStyles = {
 trigger: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', padding: 0, border: 'none', borderRadius: 'var(--dsw-radius-sm, 6px)', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', cursor: 'pointer', flex: 'none' },
+triggerActive: { background: 'var(--dsw-alias-interactive-bg-hover)', color: 'var(--dsw-alias-state-business-primary)' },
 footerAction: { display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '6px 10px', border: 'none', borderRadius: '6px', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', fontSize: '13px', cursor: 'pointer' },
-}
+bar: { position: 'fixed', left: '50%', bottom: '24px', transform: 'translateX(-50%)', zIndex: 4060, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', maxWidth: '92vw', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-3)', color: 'var(--dsw-alias-label-primary)', boxShadow: '0 12px 40px var(--dsw-alias-bg-overlay, rgba(0, 0, 0, 0.28))', pointerEvents: 'auto' },
+count: { fontSize: '13px', fontWeight: 600, marginRight: '4px' },
+button: { padding: '5px 11px', borderRadius: '7px', border: '1px solid var(--dsw-alias-border-l1)', background: 'transparent', color: 'var(--dsw-alias-label-primary)', fontSize: '12px', cursor: 'pointer' },
+primary: { padding: '5px 12px', borderRadius: '7px', border: '1px solid transparent', background: 'var(--dsw-alias-button-primary-fill)', color: 'var(--dsw-alias-label-primary-foreground)', fontSize: '12px', cursor: 'pointer' },
+danger: { padding: '5px 12px', borderRadius: '7px', border: '1px solid var(--dsw-alias-state-error-primary)', background: 'transparent', color: 'var(--dsw-alias-state-error-primary)', fontSize: '12px', cursor: 'pointer' },
+disabled: { opacity: 0.5, cursor: 'not-allowed' }, checkboxRow: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' },
+failures: { flexBasis: '100%', maxHeight: '110px', overflow: 'auto', padding: '6px 8px', borderRadius: '8px', border: '1px solid var(--dsw-alias-state-error-primary)', color: 'var(--dsw-alias-state-error-primary)', fontSize: '11px', lineHeight: 1.6, whiteSpace: 'pre-wrap' },
+progress: { fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' }, }
 /** 批量管理图标（清单 + 勾）。 */
 function BatchIcon({ size = 14 }) { return h('svg', { width: size, height: size, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor',
 strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true', }, h('path', { d: 'M2.5 4h7M2.5 8h7M2.5 12h4' }), h('path', { d: 'M11 10.5l1.6 1.6 2.4-2.6' }), )
 }
 /** 把「批量管理」按钮挂到工作区标题行图标区后面（React portal）。 */
-function BatchHeaderMount({ t }) { const [container, setContainer] = useState(null)
+function BatchHeaderMount({ t }) { const state = useBatch()
+const [container, setContainer] = useState(null)
 useEffect(() => { let active = true
 let host = null
 let timer = null
@@ -442,75 +438,92 @@ if (host !== null) host.remove()
 }
 }, [])
 if (container === null) return null
-return ReactDOM.createPortal(h('button', { type: 'button', title: t('batch.open'), 'aria-label': t('batch.open'), style: batchStyles.trigger, onClick: () => batchStore.setOpen(true),
-}, h(BatchIcon, { size: 14 })), container)
+return ReactDOM.createPortal(h('button', { type: 'button', title: state.mode ? t('batch.exit') : t('batch.open'), 'aria-label': state.mode ? t('batch.exit') : t('batch.open'), 'aria-pressed': state.mode,
+style: state.mode ? { ...batchStyles.trigger, ...batchStyles.triggerActive } : batchStyles.trigger, onClick: () => batchStore.setMode(!state.mode), }, h(BatchIcon, { size: 14 })), container)
 }
 /** 标题行入口不可用时的侧栏底部兜底入口。 */
 function BatchFooterFallback({ t }) { const state = useBatch()
 if (state.headerStatus !== 'failed') return null
-return h('button', { type: 'button', title: t('batch.headerFailed'), style: batchStyles.footerAction, onClick: () => batchStore.setOpen(true), }, h(BatchIcon, { size: 14 }), h('span', null, t('batch.open')))
+return h('button', { type: 'button', title: state.mode ? t('batch.exit') : t('batch.open'), style: batchStyles.footerAction, onClick: () => batchStore.setMode(!state.mode),
+}, h(BatchIcon, { size: 14 }), h('span', null, state.mode ? t('batch.exit') : t('batch.open')))
 }
-/** 批量管理面板：按工作区分组、勾选、批量移入回收站/彻底删除。 */
-function BatchPanel({ ctx, t }) { const state = useBatch()
-return state.open ? h(BatchPanelInner, { ctx, t }) : null
+/**
+* 会话行前面的勾选框：直接注入到官方会话行 DOM（`data-row-key="session:<id>"`）最前面。
+* 官方 leading 插槽只在空闲行挂载、且会被状态点占用，无法覆盖全部行；这里用 MutationObserver
+* 跟随行节点重建自动补挂，退出多选时整体清理。
+*/
+function BatchRowInjector({ t }) { const state = useBatch()
+const inputsRef = useRef(new Map())
+useEffect(() => { if (!state.mode) return undefined
+let active = true
+let scheduled = false
+const sync = () => { const selected = batchStore.getSnapshot().selected
+for (const [sessionId, entry] of inputsRef.current) entry.input.checked = selected.has(sessionId)
 }
-function BatchPanelInner({ ctx, t }) { const [list, setList] = useState({ sessions: [], workspaces: [], total: 0 })
-const [phase, setPhase] = useState('loading')
-const [error, setError] = useState('')
-const [filter, setFilter] = useState('all')
-const [query, setQuery] = useState('')
-const [selected, setSelected] = useState(() => new Set())
-const [stopFirst, setStopFirst] = useState(false)
+const decorate = () => { if (!active) return
+for (const [sessionId, entry] of [...inputsRef.current]) { if (!entry.host.isConnected) { entry.host.remove()
+inputsRef.current.delete(sessionId)
+}
+}
+for (const row of document.querySelectorAll('[data-row-key^="session:"]')) { const key = row.getAttribute('data-row-key') ?? ''
+const sessionId = key.slice('session:'.length)
+if (sessionId === '' || inputsRef.current.has(sessionId)) continue
+const host = document.createElement('span')
+host.dataset.dshSessionDeleteSelect = sessionId
+host.style.cssText = 'display:inline-flex;align-items:center;flex:none;margin-right:6px'
+const input = document.createElement('input')
+input.type = 'checkbox'
+input.setAttribute('aria-label', t('batch.checkbox'))
+input.style.cssText = 'width:14px;height:14px;margin:0;cursor:pointer;accent-color:var(--dsw-alias-state-business-primary)'
+input.addEventListener('click', event => { event.preventDefault()
+event.stopPropagation()
+batchStore.toggle(sessionId)
+})
+host.appendChild(input)
+row.insertBefore(host, row.firstChild)
+inputsRef.current.set(sessionId, { host, input })
+}
+sync()
+}
+const schedule = () => { if (scheduled) return
+scheduled = true
+requestAnimationFrame(() => { scheduled = false; decorate() })
+}
+decorate()
+const observer = new MutationObserver(schedule)
+observer.observe(document.body, { childList: true, subtree: true })
+return () => { active = false
+observer.disconnect()
+for (const entry of inputsRef.current.values()) entry.host.remove()
+inputsRef.current.clear()
+}
+}, [state.mode, t])
+useEffect(() => { if (!state.mode) return
+for (const [sessionId, entry] of inputsRef.current) entry.input.checked = state.selected.has(sessionId)
+}, [state])
+return null
+}
+/** 底部浮动操作栏：全选/清空/先停/批量移入回收站/彻底删除/退出。 */
+function BatchToolbar({ ctx, t }) { const state = useBatch()
 const [busy, setBusy] = useState(false)
-const [result, setResult] = useState(null)
+const [stopFirst, setStopFirst] = useState(false)
 const [armed, setArmed] = useState(false)
-const load = useCallback(async () => { setPhase('loading')
-setError('')
-try { const payload = await apiGet('/sessions')
-if (payload?.ok === true) { setList({ sessions: payload.sessions ?? [], workspaces: payload.workspaces ?? [], total: payload.total ?? 0 })
-setPhase('ready')
-} else { setError(errorText(payload, t('batch.loadFailed', { detail: '未知错误' })))
-setPhase('error')
+const [result, setResult] = useState(null)
+useEffect(() => { if (!state.mode) return
+const onKeyDown = event => { if (event.key === 'Escape' && !busy) batchStore.setMode(false)
 }
-} catch (failure) { setError(t('batch.loadFailed', { detail: failure instanceof Error ? failure.message : String(failure) }))
-setPhase('error')
-}
-}, [t])
-useEffect(() => { void load() }, [load])
-const normalizedQuery = query.trim().toLowerCase()
-const filtered = list.sessions.filter(session => { if (filter === 'archived' && session.archived !== true) return false
-if (filter === 'active' && session.archived === true) return false
-if (normalizedQuery === '') return true
-const haystack = `${session.title ?? ''}\n${session.workspace?.title ?? ''}\n${session.workspace?.path ?? ''}\n${session.cwd ?? ''}`.toLowerCase()
-return haystack.includes(normalizedQuery)
-})
-const groupMap = new Map()
-for (const session of filtered) { const key = session.workspace?.id ?? ''
-if (!groupMap.has(key)) { groupMap.set(key, { key, title: session.workspace?.title ?? t('batch.ungrouped'), items: [] })
-}
-groupMap.get(key).items.push(session)
-}
-const groups = [...groupMap.values()]
-const visibleIds = filtered.map(session => session.sessionId)
-const selectedCount = selected.size
-const titleOf = id => list.sessions.find(session => session.sessionId === id)?.title || id
-const toggle = id => setSelected(previous => { const next = new Set(previous)
-if (next.has(id)) next.delete(id)
-else next.add(id)
-return next
-})
-const toggleAll = () => setSelected(previous => ( previous.size >= visibleIds.length && visibleIds.length > 0 ? new Set() : new Set(visibleIds)
-))
-const invert = () => setSelected(previous => { const next = new Set()
-for (const id of visibleIds) if (!previous.has(id)) next.add(id)
-return next
-})
+window.addEventListener('keydown', onKeyDown)
+return () => window.removeEventListener('keydown', onKeyDown)
+}, [state.mode, busy])
+if (!state.mode) return null
+const selectedCount = state.selected.size
+const fail = text => noticeStore.show({ kind: 'error', text })
 const run = async (mode) => { if (busy || selectedCount === 0) return
 setBusy(true)
 setResult(null)
 setArmed(false)
-try { const payload = await apiPost('/batch-delete', { sessionIds: [...selected], mode, stopIfRunning: stopFirst, })
-if (payload?.ok !== true) { noticeStore.show({ kind: 'error', text: errorText(payload, t('batch.loadFailed', { detail: '未知错误' })) })
+try { const payload = await apiPost('/batch-delete', { sessionIds: [...state.selected], mode, stopIfRunning: stopFirst, })
+if (payload?.ok !== true) { fail(errorText(payload, t('batch.loadFailed', { detail: '未知错误' })))
 return
 }
 setResult(payload)
@@ -519,42 +532,33 @@ noticeStore.show({ kind: failed > 0 ? 'warn' : 'ok', text: t('batch.summary', { 
 const deleted = (payload.results ?? []).filter(item => item.ok).map(item => item.sessionId)
 refreshSessionList(ctx)
 for (const id of deleted) clearMainIfCurrent(ctx, id)
-setSelected(new Set())
-await load()
-} catch (failure) { noticeStore.show({ kind: 'error', text: t('batch.loadFailed', { detail: failure instanceof Error ? failure.message : String(failure) }) })
+batchStore.clear()
+if (failed === 0) batchStore.setMode(false)
+} catch (error) { fail(errorText(error, t('batch.loadFailed', { detail: '未知错误' })))
 } finally { setBusy(false)
 }
 }
-const renderRow = (session) => { const badges = []
-if (session.running === true) badges.push(h('span', { key: 'running', style: batchStyles.badgeWarn }, t('batch.running')))
-if (session.archived === true) badges.push(h('span', { key: 'archived', style: batchStyles.badge }, t('batch.archived')))
-if (session.pinned === true) badges.push(h('span', { key: 'pinned', style: batchStyles.badge }, t('batch.pinned')))
-if (Number(session.subagentCount) > 0) badges.push(h('span', { key: 'subagents', style: batchStyles.badge }, t('batch.subagents', { n: session.subagentCount })))
-return h('label', { key: session.sessionId, style: batchStyles.row }, h('input', { type: 'checkbox', checked: selected.has(session.sessionId), disabled: busy, onChange: () => toggle(session.sessionId), }),
-h('span', { style: batchStyles.rowTitle, title: session.title || session.sessionId }, session.title || t('settings.untitled')), ...badges, h('span', { style: batchStyles.rowMeta }, formatBytes(session.sizeBytes)), )
+const selectAll = async () => { try { const payload = await apiGet('/sessions')
+if (payload?.ok !== true) { fail(errorText(payload, t('batch.loadFailed', { detail: '未知错误' })))
+return
+}
+batchStore.select((payload.sessions ?? []).map(session => session.sessionId))
+} catch (error) { fail(t('batch.hostUnavailable'))
+}
 }
 const failures = (result?.results ?? []).filter(item => item.ok !== true)
 const disabled = busy || selectedCount === 0
-return h('div', { style: batchStyles.backdrop, role: 'presentation', onMouseDown: event => { if (event.target === event.currentTarget && !busy) batchStore.setOpen(false) }, }, h('div', { role: 'dialog',
-'aria-modal': 'true', 'aria-label': t('batch.title'), style: batchStyles.card, }, h('div', { style: batchStyles.header }, h('div', null, h('h2', { style: batchStyles.title }, t('batch.title')),
-h('p', { style: batchStyles.desc }, t('batch.desc')), ), h('button', { type: 'button', 'aria-label': t('batch.close'), style: batchStyles.close, disabled: busy, onClick: () => batchStore.setOpen(false), }, '×'), ),
-h('div', { style: batchStyles.toolbar }, h('select', { value: filter, style: batchStyles.select, disabled: busy, onChange: event => setFilter(event.target.value), }, h('option', { value: 'all' }, t('batch.filter.all')),
-h('option', { value: 'active' }, t('batch.filter.active')), h('option', { value: 'archived' }, t('batch.filter.archived')), ), h('input', { type: 'search', value: query, placeholder: t('batch.search'),
-style: batchStyles.search, disabled: busy, onChange: event => setQuery(event.target.value), }), h('button', { type: 'button', style: batchStyles.smallButton, disabled: busy, onClick: toggleAll }, t('batch.selectAll')),
-h('button', { type: 'button', style: batchStyles.smallButton, disabled: busy, onClick: invert }, t('batch.invert')),
-h('button', { type: 'button', style: batchStyles.smallButton, disabled: busy, onClick: () => setSelected(new Set()) }, t('batch.clear')),
-h('button', { type: 'button', style: batchStyles.smallButton, disabled: busy, onClick: () => void load() }, t('batch.refresh')), h('span', { style: batchStyles.selected }, t('batch.selected', { n: selectedCount })), ),
-phase === 'loading' ? h('p', { style: batchStyles.hint }, t('batch.loading')) : null, phase === 'error' ? h('p', { style: batchStyles.error }, error) : null,
-phase === 'ready' && groups.length === 0 ? h('p', { style: batchStyles.hint }, t('batch.empty')) : null, phase === 'ready' && groups.length > 0 ? h('div', { style: batchStyles.list },
-groups.map(group => h('div', { key: group.key || 'ungrouped', style: batchStyles.group }, h('div', { style: batchStyles.groupTitle }, `${group.title}（${group.items.length}）`), group.items.map(renderRow), )), ) : null,
-failures.length > 0 ? h('div', { style: batchStyles.failures }, `${t('batch.failures')}：\n` + failures.map(item => `${titleOf(item.sessionId)}：${item.message ?? item.code}`).join('\n'), ) : null,
-h('div', { style: batchStyles.footer }, h('label', { style: batchStyles.checkboxRow }, h('input', { type: 'checkbox', checked: stopFirst, disabled: busy, onChange: event => setStopFirst(event.target.checked) }),
-h('span', null, t('batch.stop')), ), busy ? h('span', { style: batchStyles.progress }, t('batch.working', { total: selectedCount })) : null, h('button', { type: 'button',
-style: busy ? { ...batchStyles.smallButton, ...batchStyles.disabled } : batchStyles.smallButton, disabled: busy, onClick: () => batchStore.setOpen(false), }, t('batch.cancel')), h('button', { type: 'button',
+return h('div', { style: batchStyles.bar, role: 'region', 'aria-label': t('batch.title') }, h('span', { style: batchStyles.count }, t('batch.selected', { n: selectedCount })),
+h('button', { type: 'button', style: batchStyles.button, disabled: busy, onClick: () => void selectAll() }, t('batch.selectAll')),
+h('button', { type: 'button', style: batchStyles.button, disabled: busy, onClick: () => batchStore.clear() }, t('batch.clear')), h('label', { style: batchStyles.checkboxRow },
+h('input', { type: 'checkbox', checked: stopFirst, disabled: busy, onChange: event => setStopFirst(event.target.checked) }), h('span', null, t('batch.stop')), ),
+busy ? h('span', { style: batchStyles.progress }, t('batch.working', { total: selectedCount })) : null, h('button', { type: 'button',
 style: disabled ? { ...batchStyles.primary, ...batchStyles.disabled } : batchStyles.primary, disabled, onClick: () => void run('trash'), }, t('batch.trash')), h('button', { type: 'button',
 style: disabled ? { ...batchStyles.danger, ...batchStyles.disabled } : batchStyles.danger, disabled, onClick: () => { if (!armed) { setArmed(true); return }
 void run('purge')
-}, onBlur: () => setArmed(false), }, armed ? t('batch.purgeConfirm') : t('batch.purge')), ), ))
+}, onBlur: () => setArmed(false), }, armed ? t('batch.purgeConfirm') : t('batch.purge')),
+h('button', { type: 'button', style: batchStyles.button, disabled: busy, onClick: () => batchStore.setMode(false) }, t('batch.exit')), failures.length > 0 ? h('div', { style: batchStyles.failures },
+`${t('batch.failures')}：\n` + failures.map(item => `${item.sessionId}：${item.message ?? item.code}`).join('\n'), ) : null, )
 }
 return { inject: ['slots', 'locale'], apply(ctx) { ctx.effect(() => ctx.locale.register(NS, { zh: TEXT, en }), 'session-delete: 词典')
 const t = ctx.locale.bind(NS)
