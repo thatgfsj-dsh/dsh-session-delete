@@ -180,6 +180,25 @@ test('子代理整树：父子目录一起进回收站，任一子代理运行�
   })
 })
 
+test('运行中子代理：即使勾选「先停止」也整体拒绝，且不留副作用', async () => {
+  await withHome(async home => {
+    const rootDir = await makeDir(home, ROOT)
+    const childDir = await makeDir(home, CHILD)
+    const snapshots = [
+      { header: { id: ROOT, cwd: '/proj' }, sizeBytes: 5 },
+      { header: { id: CHILD, cwd: '/proj', parentSession: ROOT, origin: 'subagent' }, sizeBytes: 5 },
+    ]
+    const busy = makeFakeCtx({ home, snapshots, runningIds: [CHILD] })
+    await assert.rejects(
+      () => executeDelete(busy.ctx, { sessionId: ROOT, mode: 'trash', stopIfRunning: true }),
+      error => error.code === '有子代理会话正在运行，已取消删除',
+    )
+    assert.equal(existsSync(rootDir), true)
+    assert.equal(existsSync(childDir), true)
+    assert.equal((await listEntries()).length, 0)
+  })
+})
+
 test('幂等：会话已不存在返回 already-gone，已在回收站返回 already-in-trash', async () => {
   await withHome(async home => {
     const gone = makeFakeCtx({ home })

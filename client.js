@@ -39,6 +39,7 @@ window.__ModuleLoader__.load({
       'field.subagents.none': '无',
       'field.subagents.some': '{n} 个（将一并删除）',
       'field.subagents.running': '{n} 个，其中 {running} 个正在运行',
+      'field.subagents.runningHint': '有 {n} 个子代理会话正在运行，等它们结束后再删除。',
       'field.current': '当前打开',
       'field.current.yes': '是（删除后回到空态）',
       'cleanup.title': '本次将清理',
@@ -190,6 +191,17 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** 删掉的正好是当前打开的会话时，把主视图清回空态（官方归档也是这么做的）。 */
+    function clearMainIfCurrent(ctx, sessionId) {
+      try {
+        const ui = ctx.get('uiWorkspace')
+        if (ui === undefined || typeof ui.clearMain !== 'function') return
+        if (ui.mainReference?.sessionId === sessionId) ui.clearMain()
+      } catch {
+        /* 官方主视图接口变化时忽略；侧栏刷新仍会执行 */
+      }
+    }
+
     // ---------------------------------------------------------------------
     // 确认弹窗的共享状态：行内按钮、菜单项写入，overlay 读取。
     // ---------------------------------------------------------------------
@@ -306,7 +318,7 @@ window.__ModuleLoader__.load({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(0, 0, 0, 0.42)',
+        background: 'var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, 0.42))',
         pointerEvents: 'auto',
       },
       card: {
@@ -318,7 +330,7 @@ window.__ModuleLoader__.load({
         border: '1px solid var(--dsw-alias-border-l1)',
         background: 'var(--dsw-alias-bg-layer-2)',
         color: 'var(--dsw-alias-label-primary)',
-        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.28)',
+        boxShadow: '0 12px 40px var(--dsw-alias-bg-overlay, rgba(0, 0, 0, 0.28))',
       },
       title: {
         margin: '0 0 14px',
@@ -413,6 +425,20 @@ window.__ModuleLoader__.load({
         lineHeight: 1.6,
         pointerEvents: 'auto',
         whiteSpace: 'pre-wrap',
+        position: 'relative',
+        paddingRight: '24px',
+      },
+      noticeClose: {
+        position: 'absolute',
+        top: '6px',
+        right: '8px',
+        border: 'none',
+        background: 'transparent',
+        color: 'var(--dsw-alias-label-tertiary)',
+        fontSize: '14px',
+        lineHeight: 1,
+        cursor: 'pointer',
+        padding: '2px',
       },
       cardPanel: {
         padding: '16px',
@@ -498,7 +524,9 @@ window.__ModuleLoader__.load({
     /** `⋯` 菜单项（`sidebar.workspaces.session.menu.item`）。 */
     function SessionMenuDeleteItem({ sessionId, displayTitle, useMenuOpenState, t }) {
       const [hover, setHover] = useState(false)
-      const setMenuOpen = typeof useMenuOpenState === 'function' ? useMenuOpenState()[1] : undefined
+      // 契约保证该 hook 恒存在：无条件调用，避免 props 变化导致 hooks 顺序错乱。
+      const menuOpenState = useMenuOpenState()
+      const setMenuOpen = typeof menuOpenState?.[1] === 'function' ? menuOpenState[1] : undefined
       return h('button', {
         type: 'button',
         role: 'menuitem',
@@ -527,6 +555,7 @@ window.__ModuleLoader__.load({
       const [stopFirst, setStopFirst] = useState(false)
       const [purgeArmed, setPurgeArmed] = useState(false)
       const primaryRef = useRef(null)
+      const cardRef = useRef(null)
       const closedRef = useRef(false)
 
       const load = useCallback(async () => {
@@ -548,7 +577,25 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         const onKeyDown = (event) => {
-          if (event.key === 'Escape' && busy === '') dialogStore.close()
+          if (event.key === 'Escape' && busy === '') {
+            dialogStore.close()
+            return
+          }
+          if (event.key !== 'Tab') return
+          const card = cardRef.current
+          if (card === null) return
+          const focusable = [...card.querySelectorAll('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])')]
+            .filter(element => element.disabled !== true)
+          if (focusable.length === 0) return
+          const first = focusable[0]
+          const last = focusable[focusable.length - 1]
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault()
+            last.focus()
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault()
+            first.focus()
+          }
         }
         window.addEventListener('keydown', onKeyDown)
         return () => window.removeEventListener('keydown', onKeyDown)
@@ -560,7 +607,8 @@ window.__ModuleLoader__.load({
 
       const session = state.data
       const running = session?.running === true
-      const blocked = running && !stopFirst
+      const runningChildren = Array.isArray(session?.descendants) ? session.descendants.filter(item => item.running === true).length : 0
+      const blocked = runningChildren > 0 || (running && !stopFirst)
       const close = () => { if (busy === '') dialogStore.close() }
 
       const run = async (mode) => {
@@ -588,6 +636,7 @@ window.__ModuleLoader__.load({
               sticky: warnings.length > 0,
             })
             refreshSessionList(ctx)
+            clearMainIfCurrent(ctx, request.sessionId)
             dialogStore.close()
             return
           }
@@ -604,7 +653,7 @@ window.__ModuleLoader__.load({
 
       const title = session?.title || request.title || t('dialog.titleFallback')
       const children = []
-      children.push(h('h2', { style: styles.title, key: 'title' }, t('dialog.title', { title })))
+      children.push(h('h2', { style: styles.title, key: 'title', id: 'dsh-session-delete-dialog-title' }, t('dialog.title', { title })))
 
       if (state.phase === 'loading') {
         children.push(h('p', { style: styles.hint, key: 'loading' }, t('dialog.loading')))
@@ -635,14 +684,15 @@ window.__ModuleLoader__.load({
           t('cleanup.live'),
         ]
         if (subagents.length > 0) cleanup.push(t('cleanup.subagents', { n: subagents.length }))
-        cleanup.push(t('cleanup.trash'))
-        cleanup.push(t('cleanup.purge'))
         children.push(h('div', { style: styles.sectionTitle, key: 'cleanupTitle' }, t('cleanup.title')))
         children.push(h('ul', { style: styles.list, key: 'cleanup' }, cleanup.map((line, index) => h('li', { key: `line-${index}` }, line))))
         const retentionDays = session.settings?.retentionDays
         children.push(h('p', { style: styles.hint, key: 'explain' }, session.inTrash === true
           ? t('notice.alreadyTrash')
           : Number(retentionDays) > 0 ? t('trash.explain', { days: retentionDays }) : t('trash.explainForever')))
+        if (runningChildren > 0) {
+          children.push(h('p', { style: styles.hint, key: 'childRunningHint' }, t('field.subagents.runningHint', { n: runningChildren })))
+        }
         if (running) {
           children.push(h('label', { style: styles.checkboxRow, key: 'stop' },
             h('input', {
@@ -688,7 +738,8 @@ window.__ModuleLoader__.load({
       }, h('div', {
         role: 'dialog',
         'aria-modal': 'true',
-        'aria-label': t('dialog.title', { title }),
+        'aria-labelledby': 'dsh-session-delete-dialog-title',
+        ref: cardRef,
         style: styles.card,
       }, children))
     }
@@ -702,8 +753,12 @@ window.__ModuleLoader__.load({
         notice === null ? null : h('div', {
           style: styles.notice,
           role: 'status',
+        }, notice.text, h('button', {
+          type: 'button',
+          'aria-label': '关闭提示',
+          style: styles.noticeClose,
           onClick: () => noticeStore.clear(),
-        }, notice.text),
+        }, '×')),
       )
     }
 

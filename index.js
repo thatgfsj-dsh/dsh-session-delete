@@ -81,7 +81,6 @@ async function inspectSession(ctx, sessionId, title) {
     sessionId,
     title: meta.title,
     sizeBytes: meta.sizeBytes,
-    dir: meta.dir ?? '',
     exists: meta.exists,
     inTrash,
     running: meta.running,
@@ -110,11 +109,12 @@ async function inspectSession(ctx, sessionId, title) {
  * @param {object} ctx - 宿主插件上下文。
  * @returns {Promise<void>} 完成。
  */
-async function startupSweep(ctx) {
+async function startupSweep(ctx, enqueue) {
   try {
     const settings = await readSettings()
     if (settings.sweepOnStartup !== true) return
-    const result = await sweepExpired(settings)
+    // 与用户操作共用同一个串行队列，避免启动清理和删除/还原同时写回收站。
+    const result = await enqueue(() => sweepExpired(settings))
     if (result.removed > 0 || result.failures.length > 0) {
       await appendAudit({ action: 'startup-sweep', ok: result.failures.length === 0, removed: result.removed, freedBytes: result.freedBytes, failures: result.failures.length })
       if (result.removed > 0) ctx.logger?.info?.(`session-delete: 启动清理回收站 ${result.removed} 条`)
@@ -263,7 +263,7 @@ export function apply(ctx) {
     // 一行挂载日志：`--help` 冒烟时用它确认 apply 真的执行到了这里（技能里的验证阶梯要求可见）。
     console.log('[dsh-session-delete] 宿主半边已挂载：/api/dsh-session-delete/{inspect,delete,trash,restore,purge,empty,settings}')
 
-    const timer = setTimeout(() => { void startupSweep(scoped) }, STARTUP_SWEEP_DELAY_MS)
+    const timer = setTimeout(() => { void startupSweep(scoped, enqueue) }, STARTUP_SWEEP_DELAY_MS)
     timer.unref?.()
     scoped.effect(() => () => clearTimeout(timer), 'session-delete: 启动清理定时器')
   })

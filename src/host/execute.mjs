@@ -34,24 +34,21 @@ const step = (steps, name, ok, detail) => {
  */
 async function admit(ctx, meta, stopIfRunning, steps) {
   const runningChildren = meta.descendants.filter(item => item.running === true)
-  const anyRunning = meta.running || runningChildren.length > 0
-  if (!anyRunning) {
+  // 子代理整树策略：任一子代理运行中就整体拒绝，不替用户停子代理——避免「先停再删」把别的任务砍掉。
+  if (runningChildren.length > 0) {
+    throw new DeleteError(ERROR_CODES.subagentRunning, `运行中的子代理会话：${runningChildren.map(item => item.sessionId).join('、')}，请等它们结束后再删除`, { status: 409 })
+  }
+  if (!meta.running) {
     step(steps, 'admission', true, '会话空闲，允许删除')
     return false
   }
   if (!stopIfRunning) {
-    if (runningChildren.length > 0) {
-      throw new DeleteError(ERROR_CODES.subagentRunning, `运行中的子代理会话：${runningChildren.map(item => item.sessionId).join('、')}`, { status: 409 })
-    }
     throw new DeleteError(ERROR_CODES.running, '请在弹窗里勾选「先停止运行，再移入回收站」后重试', { status: 409 })
   }
-  step(steps, 'admission', true, '会话有活动，按用户勾选先停止再删除')
-  const ids = [meta.sessionId, ...meta.descendants.map(item => item.sessionId)]
-  for (const id of ids) {
-    const stopped = await stopSessionActivity(ctx, id)
-    step(steps, `stop:${id}`, stopped.error === '', stopped.error === '' ? `已请求停止（${stopped.via}）` : `停止请求失败：${stopped.error}`)
-  }
-  const quiet = await waitQuiescent(ctx, ids)
+  step(steps, 'admission', true, '会话正在运行，按用户勾选先停止再删除')
+  const stopped = await stopSessionActivity(ctx, meta.sessionId)
+  step(steps, 'stop', stopped.error === '', stopped.error === '' ? `已请求停止（${stopped.via}）` : `停止请求失败：${stopped.error}`)
+  const quiet = await waitQuiescent(ctx, [meta.sessionId])
   if (!quiet.quiescent) {
     throw new DeleteError(ERROR_CODES.stillRunning, `仍有活动：${quiet.remaining.map(item => `${item.sessionId}(${item.kinds.join('/')})`).join('、')}`, { status: 409 })
   }
@@ -177,8 +174,10 @@ export async function executeDelete(ctx, input) {
   }
   step(steps, 'metadata', true, `采集到 ${meta.members.length} 个会话目录，共 ${meta.sizeBytes} 字节`)
 
-  const ids = [sessionId, ...meta.descendants.map(item => item.sessionId)].slice(0, MAX_TREE)
-  if (ids.length >= MAX_TREE) warnings.push(`子代理树超过 ${MAX_TREE} 个会话，已截断`)
+  const ids = [sessionId, ...meta.descendants.map(item => item.sessionId)]
+  if (ids.length > MAX_TREE) {
+    throw new DeleteError(ERROR_CODES.tooManySubagents, `会话树共 ${ids.length} 个会话，超过上限 ${MAX_TREE}；为免留下半棵树，本次没有删除`, { status: 409 })
+  }
   await admit(ctx, meta, stopIfRunning, steps)
 
   for (const id of ids) {
@@ -223,9 +222,6 @@ export async function executeDelete(ctx, input) {
 
   let trashEntry
   if (mode === 'trash') {
-    if (members.length === 0) {
-      throw new DeleteError(ERROR_CODES.notFound, '找不到任何会话目录，未做任何改动', { status: 404 })
-    }
     try {
       trashEntry = await moveIntoTrash({ members, meta: trashMeta })
     } catch (error) {
@@ -306,11 +302,14 @@ export async function executeRestore(ctx, sessionId) {
   if (entry === undefined) throw new DeleteError(ERROR_CODES.notFound, '回收站里没有这个会话', { status: 404 })
   const steps = []
   const warnings = []
+  let cleanupWarning = ''
   try {
-    await restoreEntry(entry)
+    const restoredEntry = await restoreEntry(entry)
+    cleanupWarning = restoredEntry.cleanupWarning ?? ''
   } catch (error) {
     throw new DeleteError(ERROR_CODES.restoreFailed, error instanceof Error ? error.message : String(error), { status: 500 })
   }
+  if (cleanupWarning !== '') warnings.push(cleanupWarning)
   step(steps, 'restore', true, `已把 ${entry.members.length} 个目录搬回原位`)
   const workspace = await restoreWorkspaceRecords(ctx, entry)
   for (const item of workspace.steps) {
@@ -372,11 +371,13 @@ export async function executeEmptyTrash(ctx) {
       extra: { removed: result.removed, freedBytes: result.freedBytes },
     })
   }
+  const remainingNote = result.remaining > 0 ? `，仍有 ${result.remaining} 条未处理` : ''
   return {
     ok: true,
     code: 'ok',
-    message: `已清空回收站（${result.removed} 条）`,
+    message: `已清空回收站（${result.removed} 条${remainingNote}）`,
     removed: result.removed,
+    remaining: result.remaining,
     freedBytes: result.freedBytes,
     durationMs: Date.now() - startedAt,
   }
@@ -397,11 +398,13 @@ export async function executeSweep(ctx) {
       extra: { removed: result.removed, freedBytes: result.freedBytes },
     })
   }
+  const remainingNote = result.remaining > 0 ? `，仍有 ${result.remaining} 条未处理` : ''
   return {
     ok: true,
     code: 'ok',
-    message: result.removed === 0 ? '没有过期条目需要清理' : `已清理 ${result.removed} 条过期条目`,
+    message: result.removed === 0 ? '没有过期条目需要清理' : `已清理 ${result.removed} 条过期条目${remainingNote}`,
     removed: result.removed,
+    remaining: result.remaining,
     freedBytes: result.freedBytes,
     durationMs: Date.now() - startedAt,
   }

@@ -53,6 +53,15 @@ test('normalizeSettings：非法值回落到默认值', () => {
   assert.equal(normalizeSettings({ sweepOnStartup: 'yes' }).sweepOnStartup, false)
 })
 
+test('normalizeSettings：空值/畸形值不会被 Number() 悄悄变成「永久保留」', () => {
+  // 0 是合法档位「永久保留」，所以 null/[]/''/false 必须先收敛成 NaN，再回落到默认 30。
+  for (const value of [null, [], '', false, true, 'yes', 999, -1, 1.5, '1.5', {}, [30]]) {
+    assert.equal(normalizeSettings({ retentionDays: value }).retentionDays, 30, `值 ${JSON.stringify(value)} 应回落到 30`)
+  }
+  assert.equal(normalizeSettings({ retentionDays: '0' }).retentionDays, 0)
+  assert.equal(normalizeSettings({ retentionDays: '7' }).retentionDays, 7)
+})
+
 test('策略读写是原子且可往返', async () => {
   await withHome(async () => {
     assert.equal((await readSettings()).retentionDays, 30)
@@ -63,13 +72,27 @@ test('策略读写是原子且可往返', async () => {
   })
 })
 
-test('normalizeMetadata：缺成员直接判无效，畸形字段被丢弃', () => {
+test('normalizeMetadata：缺成员/缺 payload/相对路径都判无效', () => {
   assert.equal(normalizeMetadata(null, 'x'), undefined)
   assert.equal(normalizeMetadata({ members: [] }, 'x'), undefined)
-  const meta = normalizeMetadata({ members: [{ sessionId: 's1', originalPath: '/p' }], sizeBytes: 'bad' }, 'x')
+  // 没有 payload：整条判无效，绝不做有风险的还原。
+  assert.equal(normalizeMetadata({ members: [{ sessionId: 's1', originalPath: '/p' }] }, 'x'), undefined)
+  // payload 被篡改成非数字：同样整条判无效。
+  assert.equal(normalizeMetadata({ members: [{ sessionId: 's1', originalPath: '/p', payload: '../x' }] }, 'x'), undefined)
+  // 相对路径不是合法的会话目录，判无效。
+  assert.equal(normalizeMetadata({ members: [{ sessionId: 's1', originalPath: 'rel', payload: '0' }] }, 'x'), undefined)
+  const meta = normalizeMetadata({ members: [{ sessionId: 's1', originalPath: '/p', payload: '0' }], sizeBytes: 'bad' }, 'x')
   assert.equal(meta.sessionId, 's1')
   assert.equal(meta.members.length, 1)
   assert.equal(meta.sizeBytes, 0)
+})
+
+test('normalizeMetadata：顶层 sessionId 被篡改时以 root 成员为准', () => {
+  const meta = normalizeMetadata({
+    sessionId: 'session-evil',
+    members: [{ sessionId: 'session-good', originalPath: '/p', payload: '0', isRoot: true }],
+  }, 'x')
+  assert.equal(meta.sessionId, 'session-good')
 })
 
 test('移入回收站 → 列表 → 还原：目录与记账位置都回来', async () => {

@@ -8,7 +8,8 @@
  *     trash/<trashId>/payload/0, payload/1, ...   ← 每个被删会话的原始目录
  */
 import { mkdir, readdir, rm } from 'node:fs/promises'
-import { join, resolve, sep } from 'node:path'
+import { isAbsolute, join, resolve, sep } from 'node:path'
+import { realpath } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { atomicWriteJson, exists, moveTree, readJsonSafe, removeTree, sizeOf, statSafe } from './fs-util.mjs'
 import { assertSessionId, sessionsRoot, settingsPath, trashRoot } from './paths.mjs'
@@ -28,11 +29,30 @@ function isInside(root, target) {
   return target === root || target.startsWith(`${root}${sep}`)
 }
 
+/**
+ * 把输入收敛成「整数天数」或 NaN。
+ * 只接受数字与非空整数字符串；`null`/`[]`/`''`/`false` 等一律 NaN，
+ * 交给上层回落到默认值——`Number()` 会把它们变成 0（合法档位「永久保留」），不能直接用。
+ * @param {unknown} value - 原始值。
+ * @returns {number} 整数天数或 NaN。
+ */
+function coerceRetentionDays(value) {
+  if (typeof value === 'number') return Number.isInteger(value) ? value : Number.NaN
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if (/^-?\d+$/.test(text)) return Number(text)
+  }
+  return Number.NaN
+}
+
 /** 允许的保留天数档位（0 = 永久）。 */
 export const RETENTION_CHOICES = Object.freeze([7, 15, 30, 90, 0])
 
-/** 单次清空/清理最多处理的条目数，避免一次请求卡死。 */
+/** 单批处理的条目数；清空/清理会分批循环，避免一次请求把事件循环占死。 */
 const MAX_BATCH = 200
+
+/** 单次清空/清理最多循环的批次数，防御性上限。 */
+const MAX_ROUNDS = 100
 
 /**
  * 归一化策略对象：非法值回落到默认值，绝不把畸形配置写回磁盘。
@@ -41,7 +61,7 @@ const MAX_BATCH = 200
  */
 export function normalizeSettings(raw) {
   const source = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
-  const days = Number(source.retentionDays)
+  const days = coerceRetentionDays(source.retentionDays)
   const retentionDays = RETENTION_CHOICES.includes(days) ? days : SETTINGS_DEFAULTS.retentionDays
   return {
     version: 1,
@@ -80,28 +100,33 @@ export async function writeSettings(patch) {
 export function normalizeMetadata(raw, trashId) {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const members = Array.isArray(raw.members)
-    ? raw.members.filter(item => item !== null && typeof item === 'object' && typeof item.sessionId === 'string' && typeof item.originalPath === 'string')
+    ? raw.members.filter(item => item !== null && typeof item === 'object'
+      && typeof item.sessionId === 'string' && item.sessionId !== ''
+      && typeof item.originalPath === 'string' && isAbsolute(item.originalPath))
       .map((item, index) => ({
         sessionId: item.sessionId,
         title: typeof item.title === 'string' ? item.title : '',
         originalPath: item.originalPath,
-        payload: typeof item.payload === 'string' && /^\d+$/.test(item.payload) ? item.payload : String(index),
+        // payload 必须是纯数字序号；篡改/缺失都判整条元数据无效，避免把 payload 挪到错误路径。
+        payload: typeof item.payload === 'string' && /^\d+$/.test(item.payload) ? item.payload : '',
         sizeBytes: Number.isFinite(item.sizeBytes) ? item.sizeBytes : 0,
         isRoot: item.isRoot === true,
         archived: item.archived === true,
         pinned: item.pinned === true,
       }))
     : []
-  if (members.length === 0) return undefined
+  // 成员形状不完整（缺 payload 等）时整条判无效，宁可让人看到坏数据也不做有风险的还原。
+  if (members.length === 0 || members.some(item => item.payload === '')) return undefined
   const root = members.find(item => item.isRoot) ?? members[0]
   return {
     version: METADATA_VERSION,
     trashId,
-    sessionId: typeof raw.sessionId === 'string' ? raw.sessionId : root.sessionId,
+    // 顶层 sessionId 可被篡改，恢复记账必须以成员里的 root 为准。
+    sessionId: root.sessionId,
     title: typeof raw.title === 'string' ? raw.title : root.title,
     deletedAt: typeof raw.deletedAt === 'string' ? raw.deletedAt : new Date(0).toISOString(),
     sizeBytes: Number.isFinite(raw.sizeBytes) ? raw.sizeBytes : members.reduce((sum, item) => sum + item.sizeBytes, 0),
-    workspaceId: typeof raw.workspaceId === 'string' ? raw.workspaceId : '',
+    workspaceId: typeof raw.workspaceId === 'string' && raw.workspaceId.length <= 200 ? raw.workspaceId : '',
     workspacePath: typeof raw.workspacePath === 'string' ? raw.workspacePath : '',
     workspaceTitle: typeof raw.workspaceTitle === 'string' ? raw.workspaceTitle : '',
     archived: raw.archived === true,
@@ -204,10 +229,23 @@ export async function moveIntoTrash(input) {
  */
 export async function restoreEntry(entry) {
   if (entry === undefined || typeof entry.dir !== 'string') throw new Error('回收站条目不存在')
-  const root = resolve(sessionsRoot())
+  if (!isInside(resolve(trashRoot()), resolve(entry.dir))) {
+    throw new Error(`回收站元数据异常：条目目录越界（${entry.dir}）`)
+  }
+  const quarantine = resolve(sessionsRoot())
+  const canonicalRoot = await realpath(quarantine).catch(() => quarantine)
   for (const member of entry.members) {
-    if (!isInside(root, resolve(member.originalPath))) {
+    if (!isInside(quarantine, resolve(member.originalPath))) {
       throw new Error(`回收站元数据异常：原路径不在会话目录下（${member.originalPath}）`)
+    }
+    // 原路径的父目录必须真实落在会话根内：防止 sessions 根下某一级父目录是符号链接时被带出根外。
+    const parent = resolve(member.originalPath, '..')
+    const canonicalParent = await realpath(parent).catch(() => undefined)
+    if (canonicalParent === undefined || !isInside(canonicalRoot, canonicalParent)) {
+      throw new Error(`回收站元数据异常：原路径父目录不在会话目录下（${member.originalPath}）`)
+    }
+    if (!await exists(join(entry.dir, 'payload', member.payload))) {
+      throw new Error(`回收站条目缺少数据文件：${member.sessionId}`)
     }
     if (await exists(member.originalPath)) {
       throw new Error(`原路径已存在，无法还原：${member.originalPath}`)
@@ -225,8 +263,14 @@ export async function restoreEntry(entry) {
     }
     throw error
   }
-  await removeTree(entry.dir)
-  return { restored: entry.members.map(member => member.sessionId), skipped: [] }
+  // 数据已经搬回原位，清理回收站目录失败只作为警告，不能把「已还原」说成「还原失败」。
+  let cleanupWarning = ''
+  try {
+    await removeTree(entry.dir)
+  } catch (error) {
+    cleanupWarning = `回收站临时目录清理失败：${error instanceof Error ? error.message : String(error)}`
+  }
+  return { restored: entry.members.map(member => member.sessionId), skipped: [], cleanupWarning }
 }
 
 /**
@@ -248,19 +292,32 @@ export async function purgeEntry(entry) {
  * @returns {Promise<{removed: number, freedBytes: number, failures: {trashId: string, reason: string}[]}>} 清空结果。
  */
 export async function emptyTrash() {
-  const entries = await listEntries()
   let removed = 0
   let freedBytes = 0
   const failures = []
-  for (const entry of entries.slice(0, MAX_BATCH)) {
-    try {
-      freedBytes += await purgeEntry(entry)
-      removed += 1
-    } catch (error) {
-      failures.push({ trashId: entry.trashId, reason: error instanceof Error ? error.message : String(error) })
+  let remaining = 0
+  // 分批清空，直到没有进展或清完；失败条目会留在列表里，本轮不再重试以免死循环。
+  for (let round = 0; round < MAX_ROUNDS; round += 1) {
+    const entries = await listEntries()
+    if (entries.length === 0) return { removed, freedBytes, failures, remaining: 0 }
+    const batch = entries.slice(0, MAX_BATCH)
+    let progress = 0
+    for (const entry of batch) {
+      try {
+        freedBytes += await purgeEntry(entry)
+        removed += 1
+        progress += 1
+      } catch (error) {
+        failures.push({ trashId: entry.trashId, reason: error instanceof Error ? error.message : String(error) })
+      }
+    }
+    if (progress === 0) {
+      remaining = entries.length
+      break
     }
   }
-  return { removed, freedBytes, failures }
+  if (remaining === 0) remaining = (await listEntries()).length
+  return { removed, freedBytes, failures, remaining }
 }
 
 /**
@@ -273,21 +330,34 @@ export async function sweepExpired(settings, now = Date.now()) {
   const days = Number(settings?.retentionDays)
   if (!Number.isFinite(days) || days <= 0) return { removed: 0, freedBytes: 0, failures: [] }
   const cutoff = now - days * 24 * 60 * 60 * 1000
-  const entries = await listEntries()
   let removed = 0
   let freedBytes = 0
   const failures = []
-  for (const entry of entries.slice(0, MAX_BATCH)) {
-    const deletedAt = Date.parse(entry.deletedAt)
-    if (!Number.isFinite(deletedAt) || deletedAt > cutoff) continue
-    try {
-      freedBytes += await purgeEntry(entry)
-      removed += 1
-    } catch (error) {
-      failures.push({ trashId: entry.trashId, reason: error instanceof Error ? error.message : String(error) })
+  let remaining = 0
+  for (let round = 0; round < MAX_ROUNDS; round += 1) {
+    const entries = await listEntries()
+    const expired = entries.filter(entry => {
+      const deletedAt = Date.parse(entry.deletedAt)
+      return Number.isFinite(deletedAt) && deletedAt <= cutoff
+    })
+    if (expired.length === 0) return { removed, freedBytes, failures, remaining: 0 }
+    const batch = expired.slice(0, MAX_BATCH)
+    let progress = 0
+    for (const entry of batch) {
+      try {
+        freedBytes += await purgeEntry(entry)
+        removed += 1
+        progress += 1
+      } catch (error) {
+        failures.push({ trashId: entry.trashId, reason: error instanceof Error ? error.message : String(error) })
+      }
+    }
+    if (progress === 0) {
+      remaining = expired.length
+      break
     }
   }
-  return { removed, freedBytes, failures }
+  return { removed, freedBytes, failures, remaining }
 }
 
 /**

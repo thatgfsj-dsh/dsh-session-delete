@@ -2,7 +2,7 @@
  * 隔离环境端到端自检（不会碰真实会话，也不会重启你正在用的 dsh web）：
  *
  * 1. 检查本仓库已安装进某个 web profile（默认 `~/.dsh/profiles/web`）。
- * 2. 创建临时 `DSH_HOME`，把真实 profiles 目录符号链接过去（只读复用组合，不写真实 profile）。
+ * 2. 创建临时 `DSH_HOME`，复制一份 web profile 并修复外部符号链接（不写真实 profile）。
  * 3. 从真实 `~/.dsh/sessions` 复制一个会话到临时目录（只复制日志文件，不复制锁）。
  * 4. 用 `--port 0` 启动 `dsh web`，解析它打印的 URL 与 token。
  * 5. 走 `inspect → delete(trash) → trash → restore → delete(purge) → settings` 全链路，
@@ -19,10 +19,10 @@
  */
 
 import { spawn } from 'node:child_process'
-import { copyFile, mkdtemp, readdir, rm, symlink, mkdir } from 'node:fs/promises'
+import { copyFile, cp, mkdtemp, readdir, readlink, rm, symlink, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 const PROFILE = process.env.DSH_PROFILE ?? 'web'
 const REAL_HOME = process.env.DSH_REAL_HOME ?? join(homedir(), '.dsh')
@@ -72,6 +72,42 @@ async function api(origin, path, options = {}) {
   return { status: response.status, payload }
 }
 
+/**
+ * 复制 profile 后，把指向仓库外部的相对符号链接改写成绝对路径。
+ * @param {string} sourceRoot - 真实 profile 根。
+ * @param {string} targetRoot - 临时 profile 根。
+ * @returns {Promise<number>} 修复的数量。
+ */
+async function repairSymlinks(sourceRoot, targetRoot) {
+  let repaired = 0
+  const walk = async (relative) => {
+    const targetDir = relative === '' ? targetRoot : join(targetRoot, relative)
+    let entries
+    try {
+      entries = await readdir(targetDir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const relChild = relative === '' ? entry.name : join(relative, entry.name)
+      const targetPath = join(targetRoot, relChild)
+      if (entry.isSymbolicLink()) {
+        const linkTarget = await readlink(targetPath)
+        if (existsSync(resolve(dirname(targetPath), linkTarget))) continue
+        const sourcePath = join(sourceRoot, relChild)
+        const absolute = resolve(dirname(sourcePath), linkTarget)
+        await rm(targetPath, { force: true })
+        await symlink(absolute, targetPath)
+        repaired += 1
+        continue
+      }
+      if (entry.isDirectory()) await walk(relChild)
+    }
+  }
+  await walk('')
+  return repaired
+}
+
 /** 从真实会话树里挑一个样例会话并复制到临时 HOME；返回会话候选 ID。 */
 async function copySampleSession() {
   const realSessions = join(REAL_HOME, 'sessions')
@@ -84,6 +120,8 @@ async function copySampleSession() {
       const sourceDir = join(projectDir, session.name)
       const logs = (await readdir(sourceDir)).filter(name => name.endsWith('.jsonl.zstd'))
       if (logs.length === 0) continue
+      const sampleFilter = process.env.DSH_E2E_SAMPLE
+      if (sampleFilter !== undefined && sampleFilter !== '' && !session.name.includes(sampleFilter)) continue
       const targetDir = join(tempHome, 'sessions', project.name, session.name)
       await mkdir(targetDir, { recursive: true })
       for (const log of logs) await copyFile(join(sourceDir, log), join(targetDir, log))
@@ -152,8 +190,12 @@ try {
   if (failures.length > 0) throw new Error('前置条件不满足')
 
   tempHome = await mkdtemp(join(tmpdir(), 'dsh-session-delete-e2e-'))
-  // 只读复用真实 profile：复制目录会破坏 node_modules 里的相对符号链接，所以用符号链接。
-  await symlink(join(REAL_HOME, 'profiles'), join(tempHome, 'profiles'), 'dir')
+  // 复制一份 profile 到临时 HOME：之后修复相对符号链接，避免污染真实 profile 文件。
+  const sourceProfile = join(REAL_HOME, 'profiles', PROFILE)
+  const targetProfile = join(tempHome, 'profiles', PROFILE)
+  await cp(sourceProfile, targetProfile, { recursive: true, verbatimSymlinks: true })
+  const repaired = await repairSymlinks(sourceProfile, targetProfile)
+  console.log(`临时 profile 已复制，修复符号链接 ${repaired} 个`)
 
   const sample = await copySampleSession()
   console.log(`样例会话：${sample.projectKey}/${sample.dirName}`)
@@ -207,12 +249,17 @@ try {
   const inTrashAfterPurge = await api(origin, '/trash')
   check('彻底删除不进回收站', (inTrashAfterPurge.payload.entries ?? []).length === 0)
 
+  const malformed = await api(origin, '/settings', { method: 'POST', body: { retentionDays: null } })
+  check('畸形 retentionDays 回落到默认 30', malformed.payload.ok === true && malformed.payload.settings?.retentionDays === 30, JSON.stringify(malformed.payload.settings))
+  const malformedArray = await api(origin, '/settings', { method: 'POST', body: { retentionDays: [] } })
+  check('数组 retentionDays 回落到默认 30', malformedArray.payload.ok === true && malformedArray.payload.settings?.retentionDays === 30, JSON.stringify(malformedArray.payload.settings))
+
   const settings = await api(origin, '/settings', { method: 'POST', body: { retentionDays: 90, sweepOnStartup: false } })
   check('保存回收站策略', settings.payload.ok === true && settings.payload.settings?.retentionDays === 90, JSON.stringify(settings.payload.settings))
   const settingsBack = await api(origin, '/settings')
   check('读回回收站策略', settingsBack.payload.settings?.retentionDays === 90 && settingsBack.payload.settings?.sweepOnStartup === false)
 
-  check('客户端 bundle 进入启动图', page.includes('dsh-session-delete'), '启动 HTML 中未找到 dsh-session-delete/client.js')
+  check('客户端 bundle 进入启动图', page.includes('dsh-session-delete/client.js'), '启动 HTML 中未找到 dsh-session-delete/client.js')
 } catch (error) {
   check('端到端流程', false, error instanceof Error ? error.message : String(error))
   if (lastOutput !== '') {

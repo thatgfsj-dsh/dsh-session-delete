@@ -12,6 +12,7 @@ export const ERROR_CODES = Object.freeze({
   notFound: '会话不存在',
   running: '会话正在运行，已取消删除',
   subagentRunning: '有子代理会话正在运行，已取消删除',
+  tooManySubagents: '子代理会话过多，已取消删除',
   stillRunning: '等待会话停止超时，已取消删除',
   trashFailed: '移入回收站失败，已回滚',
   detachFailed: '摘除活体会话失败，已回滚',
