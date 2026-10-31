@@ -1,0 +1,4 @@
+# 挂载宿主半边。insert.id = insert.name = 包名 = 客户端模块 id。
+- insert:
+    - id: dsh-session-delete
+      name: dsh-session-delete
