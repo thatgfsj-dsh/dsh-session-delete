@@ -8,10 +8,12 @@
  * 不 import 任何 `@deepseek-ai/*` 包：只用 Node 内置模块与本仓库的相对路径。
  */
 import { appendAudit } from './src/host/audit.mjs'
+import { normalizeBatchInput, runBatchDelete } from './src/host/batch.mjs'
 import { DeleteError, ERROR_CODES, asDeleteError } from './src/host/errors.mjs'
 import { json, queryParam, readJsonBody, withErrors } from './src/host/http.mjs'
 import { assertSessionId } from './src/host/paths.mjs'
 import { collectSessionMeta, readSnapshotIndex } from './src/host/session-meta.mjs'
+import { collectSessionList } from './src/host/sessions-list.mjs'
 import {
   executeDelete,
   executeEmptyTrash,
@@ -239,6 +241,27 @@ export function apply(ctx) {
         return await mutate(onlyExpired ? 'sweep' : 'empty', '', () => onlyExpired ? executeSweep(scoped) : executeEmptyTrash(scoped))
       }),
     }), 'session-delete: empty 路由')
+
+    scoped.effect(() => scoped.connection.fetch.register({
+      path: `${BASE}/sessions`,
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: withErrors(async () => {
+        const list = await collectSessionList(scoped)
+        return json(200, { ok: true, ...list })
+      }),
+    }), 'session-delete: sessions 路由')
+
+    scoped.effect(() => scoped.connection.fetch.register({
+      path: `${BASE}/batch-delete`,
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: withErrors(async (request) => {
+        const body = await readJsonBody(request)
+        const input = normalizeBatchInput(body)
+        return await mutate('batch-delete', '', () => runBatchDelete(scoped, input))
+      }),
+    }), 'session-delete: batch-delete 路由')
 
     scoped.effect(() => scoped.connection.fetch.register({
       path: `${BASE}/settings`,
