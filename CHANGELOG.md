@@ -1,5 +1,33 @@
 # 更新日志
 
+## v0.1.8（2026-11-02）
+
+### 红蓝对抗后的删除/回收站/还原加固（Issue #17 / PR #18）
+
+**P0 数据安全**
+
+- **残骸复检 fail-closed**：`cleanResurrectedResidue` 在 `sessionPersistence.list()` 抛错/不可用时不再盲删；只有列表成功且确认不是合法会话才清理原位残骸，否则保留 + 告警。
+- **回滚失败不丢数据**：`moveIntoTrash`/`restoreEntry` 回滚失败时保留回收站条目并写 `partial` 元数据；只有 payload 全部回空才删条目目录。设置页对不完整条目禁用还原、标注原因。
+- **破坏性路径精确 ID**：去掉 `trim` 静默归一化与 bare/prefix 变体猜测；目录解析只用 `encodeSegment(id)` 精确匹配，header id 与请求不一致直接拒绝（409）。回收站查找/投影缓存清理同样只按精确 ID。
+
+**P1 残留/失败语义**
+
+- **残骸探测窗口**：删除事务内只做即时检查；活体删除在响应后 300/900/1800ms 后台补检（每个目录只排一份，还原成功会取消），不再每条删除固定 +150ms。cold 删除回到 ~3ms/条，批量 200 不再卡 30s。
+- **flush 后重新解析 members**：空白/未落盘会话在 flush 时被 materialize 后会被正常删除，不再误报 `already-gone` 并把日志留在盘上。
+- **already-in-trash 补偿**：重试删除时补跑工作区/归档/置顶/投影缓存清理；列表不可用时 fail-closed，不误摘活体会话。
+- **unsupported detach 中止**：缺少 `liveEntryFor`/`detachEntered` 且会话仍在内存时返回 409，不删盘、不广播。
+- **list 降级不假成功**：持久化列表抛错且目录定位不到时返回 5xx「无法确认」，不再谎报 `already-gone`。
+- **还原续做**：上次还原中断后重试，已回原位且被宿主认可的成员跳过；原路径只有无头残骸时先清掉再还原；缺失父目录会创建。
+- **purge 顺序**：先删 payload 再删 metadata，部分失败时条目仍可见可重试；empty/sweep 部分失败时已成功条目的投影缓存也会清。
+- **启动清理**改走 `executeSweep`，过期条目清理时同步清投影缓存。
+- 请求体改为流式限额（先看 content-length，再按流读取并在 64KiB 处截断）。
+- 会话树规模在完整采集前先用索引 header 计数，超 200 直接拒绝。
+
+### 文档
+
+- README 更新执行顺序与安全规则（精确 ID、fail-closed、partial、后台补检、锁文件的 POSIX/Windows 差异）。
+- 新增 `tests/redblue.test.mjs`（10 项）覆盖上述 P0/P1 修复；`node --test` 58 项全绿；新增活体删除→回收站→还原→重开 E2E。
+
 ## v0.1.7（2026-11-02）
 
 ### 修复：删除后的残留导致「重开会话」卡死、只能重启宿主

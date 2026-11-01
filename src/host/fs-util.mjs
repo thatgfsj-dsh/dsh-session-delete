@@ -213,6 +213,13 @@ export async function moveTree(source, target) {
     await removeTree(target).catch(() => {})
     throw error
   }
-  await removeTree(source)
-  return { mode: 'copy', files: verified.files, bytes: verified.bytes }
+  // 目标已逐文件校验通过；删源失败（Windows 句柄/权限）时不能把校验过的副本也丢掉：
+  // 保留目标并把清理失败作为警告交给调用方，源目录残留可稍后清理。
+  let sourceCleanupWarning = ''
+  try {
+    await removeTree(source)
+  } catch (error) {
+    sourceCleanupWarning = `跨盘搬移后源目录清理失败：${error instanceof Error ? error.message : String(error)}`
+  }
+  return { mode: 'copy', files: verified.files, bytes: verified.bytes, sourceCleanupWarning }
 }

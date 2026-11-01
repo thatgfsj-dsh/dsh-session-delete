@@ -21,7 +21,7 @@ import {
   executeRestore,
   executeSweep,
 } from './src/host/execute.mjs'
-import { findEntryBySession, listEntries, readSettings, sweepExpired, usageOf, writeSettings } from './src/host/trash.mjs'
+import { findEntryBySession, listEntries, readSettings, usageOf, writeSettings } from './src/host/trash.mjs'
 
 /** 路由前缀。 */
 const BASE = '/api/dsh-session-delete'
@@ -116,7 +116,8 @@ async function startupSweep(ctx, enqueue) {
     const settings = await readSettings()
     if (settings.sweepOnStartup !== true) return
     // 与用户操作共用同一个串行队列，避免启动清理和删除/还原同时写回收站。
-    const result = await enqueue(() => sweepExpired(settings))
+    // 与设置页「立即清理」走同一个补偿路径：删条目的同时清投影缓存。
+    const result = await enqueue(() => executeSweep(ctx))
     if (result.removed > 0 || result.failures.length > 0) {
       await appendAudit({ action: 'startup-sweep', ok: result.failures.length === 0, removed: result.removed, freedBytes: result.freedBytes, failures: result.failures.length })
       if (result.removed > 0) ctx.logger?.info?.(`session-delete: 启动清理回收站 ${result.removed} 条`)

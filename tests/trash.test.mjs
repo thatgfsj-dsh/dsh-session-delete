@@ -106,8 +106,8 @@ test('移入回收站 → 列表 → 还原：目录与记账位置都回来', a
     assert.equal(entry.members.length, 1)
     assert.equal(await listEntries().then(list => list.length), 1)
     assert.equal((await findEntryBySession(id))?.trashId, entry.trashId)
-    // 两种命名都能找到
-    assert.equal((await findEntryBySession('11111111-2222-3333-4444-555555555555'))?.trashId, entry.trashId)
+    // 破坏性路径只认精确 ID：另一种写法不能命中（两个仅差前缀的 ID 可以共存）。
+    assert.equal(await findEntryBySession('11111111-2222-3333-4444-555555555555'), undefined)
 
     const restored = await restoreEntry(entry)
     assert.deepEqual(restored.restored, [id])

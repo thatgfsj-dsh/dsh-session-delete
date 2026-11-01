@@ -88,8 +88,8 @@ test('回收站模式：先摘活体再搬目录，清记账与投影缓存，�
     assert.deepEqual(workspaceCalls.detach, [ROOT])
     assert.deepEqual(registry.calls.unarchive, [ROOT])
     assert.deepEqual(registry.calls.unpin, [ROOT])
-    // 活体摘除时官方会发同一条事件，这里不重复广播。
-    assert.equal(fake.emitted.some(item => item.name === 'api-session/removed' && item.payload === ROOT), false)
+    // 删除后仍补发 removal（官方事件幂等，覆盖 announced=false 的窗口）。
+    assert.equal(fake.emitted.some(item => item.name === 'api-session/removed' && item.payload === ROOT), true)
     assert.equal(fake.calls.domainDelete.includes(ROOT), true)
     const entries = await listEntries()
     assert.equal(entries.length, 1)
@@ -272,7 +272,32 @@ test('删除后原位出现无头残骸：清掉；宿主已重新登记的合�
     const fake = makeFakeCtx({ home, snapshots: [] })
     await cleanResurrectedResidue(fake.ctx, members, steps, warnings, leftovers)
     assert.equal(existsSync(ghost), false)
-    assert.equal(warnings.some(item => item.includes('无头残骸')), true)
+    assert.equal(steps.some(item => item.step === `residue:${ROOT}` && item.ok === true), true)
+    assert.deepEqual(warnings, [])
+
+    // list() 抛错时必须 fail-closed：保留目录、告警，绝不盲删。
+    const unclear = await makeDir(home, ROOT)
+    let calls = 0
+    const brokenListCtx = { get: name => name === 'sessionPersistence' ? { list: async () => { calls += 1; throw new Error('EACCES: permission denied') } } : undefined }
+    const warningsBroken = []
+    const leftoversBroken = []
+    await cleanResurrectedResidue(brokenListCtx, [{ sessionId: ROOT, dirPath: unclear }], [], warningsBroken, leftoversBroken)
+    assert.equal(calls > 0, true)
+    assert.equal(existsSync(unclear), true)
+    assert.deepEqual(leftoversBroken, [unclear])
+    assert.equal(warningsBroken.some(item => item.includes('无法确认')), true)
+
+    // watch=true 时能清理窗口内迟到写回的残骸。
+    await rm(ghost, { recursive: true, force: true })
+    const lateWriter = setTimeout(() => {
+      void mkdir(ghost, { recursive: true }).then(() => writeFile(join(ghost, 'session.lock'), ''))
+    }, 200)
+    const warningsLate = []
+    const leftoversLate = []
+    const stepsLate = []
+    await cleanResurrectedResidue(makeFakeCtx({ home, snapshots: [] }).ctx, [{ sessionId: ROOT, dirPath: ghost }], stepsLate, warningsLate, leftoversLate, { watch: true })
+    clearTimeout(lateWriter)
+    assert.equal(existsSync(ghost), false)
 
     // 宿主已把它重新登记成合法会话时不能删，只告警。
     const legal = await makeDir(home, ROOT)
