@@ -2,7 +2,7 @@
  * 审计日志：每次删除/还原/彻底删除/清空/策略变更写一行 JSON。
  * 写日志永远不抛错，日志故障不能反过来弄坏用户的数据操作。
  */
-import { appendFile, mkdir, rename, stat } from 'node:fs/promises'
+import { appendFile, mkdir, rename, rm, stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { auditLogPath } from './paths.mjs'
 
@@ -19,7 +19,11 @@ export async function appendAudit(record) {
     const path = auditLogPath()
     await mkdir(dirname(path), { recursive: true })
     const info = await stat(path).catch(() => undefined)
-    if (info !== undefined && info.size > MAX_LOG_BYTES) await rename(path, `${path}.1`).catch(() => {})
+    if (info !== undefined && info.size > MAX_LOG_BYTES) {
+      // Windows 上 rename 到已存在的目标会失败，先删旧滚动文件再改名。
+      await rm(`${path}.1`, { force: true }).catch(() => {})
+      await rename(path, `${path}.1`).catch(() => {})
+    }
     const line = JSON.stringify({ time: new Date().toISOString(), ...record })
     await appendFile(path, `${line}\n`, 'utf8')
   } catch {

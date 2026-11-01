@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-delete",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "全中文 DSH 会话删除插件：侧栏会话行内删除，删除进插件设置页的回收站。",
   "license": "MIT",
@@ -46,7 +46,8 @@
     "selfcheck": "node tests/e2e.mjs",
     "build:client": "node scripts/build-client.mjs",
     "check:client": "node scripts/build-client.mjs --check",
-    "ui:smoke": "node scripts/ui-smoke.mjs"
+    "ui:smoke": "node scripts/ui-smoke.mjs",
+    "wine:smoke": "node scripts/wine-host-smoke.mjs"
   },
   "repository": {
     "type": "git",

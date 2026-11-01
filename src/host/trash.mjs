@@ -8,7 +8,7 @@
  *     trash/<trashId>/payload/0, payload/1, ...   ← 每个被删会话的原始目录
  */
 import { mkdir, readdir, rm } from 'node:fs/promises'
-import { isAbsolute, join, resolve, sep } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { realpath } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { atomicWriteJson, exists, moveTree, readJsonSafe, removeTree, sizeOf, statSafe } from './fs-util.mjs'
@@ -24,9 +24,21 @@ export const SETTINGS_DEFAULTS = Object.freeze({
   sweepOnStartup: true,
 })
 
-/** 判断 `target` 是否在 `root` 目录内（含根目录本身）。 */
-function isInside(root, target) {
-  return target === root || target.startsWith(`${root}${sep}`)
+/** 取相对路径的分隔符风格（win32 下 rel 用 `\\`）。 */
+const sepOf = rel => (rel.includes('\\') ? '\\' : '/')
+
+/**
+ * 判断 `target` 是否在 `root` 目录内（含根目录本身）。
+ * 用 `path.relative` 而不是字符串前缀：Windows 盘符大小写、`..`、混合分隔符都能正确处理。
+ * @param {string} root - 根目录绝对路径。
+ * @param {string} target - 待判断绝对路径。
+ * @returns {boolean} 是否在根目录内。
+ */
+export function isInside(root, target) {
+  const rel = relative(resolve(root), resolve(target))
+  if (rel === '') return true
+  if (isAbsolute(rel)) return false
+  return rel !== '..' && !rel.startsWith(`..${sepOf(rel)}`)
 }
 
 /**

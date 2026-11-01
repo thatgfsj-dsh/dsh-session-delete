@@ -16,6 +16,28 @@
 - **即时刷新**：删除后广播 `api-session/removed`，侧栏行立即消失；还原后主动刷新会话列表。
 - **失败可解释**：分步执行并记录每一步；可回滚项回滚；返回中文错误与残留文件清单，不静默失败。
 
+## Windows
+
+插件已做 Windows 适配，客户端 UI 与平台无关，主要改动在宿主：
+
+- 主目录解析对齐官方 `dsh-home-paths`（`$DSH_HOME` → `~/.dsh`，支持 `~`、resolve 成绝对路径，不依赖 `$HOME`）。
+- 会话 ID 额外拒绝 Windows 非法字符（`<>:"|?*`、控制字符）、结尾点/空格与保留设备名（`CON`/`NUL`/`COM1`…）。
+- 回收站路径包含判断改用 `path.relative`（盘符大小写、`..`、混合分隔符都正确）。
+- 搬移/删除对 Windows 的 `EPERM`/`EBUSY`/`EACCES` 做退避重试；只读属性会先清再删；跨盘仍走「复制 → 逐文件校验 → 删源」。
+- 审计日志滚动先删旧 `.1` 再改名（Windows 不允许 rename 覆盖已存在文件）。
+
+安装与 Linux 相同：`dsh plugin --profile web add <本仓库路径>`（Windows 上需要 `pnpm` 在 `PATH`；若插件管理器的 pnpm 解析异常，可手动把包放进 `%DSH_HOME%\profiles\web\node_modules\dsh-session-delete`，并把包名加进 profile 的 `dependencies` 与 `dsh.profile.bundles`）。
+
+### Windows 验证（Wine，可选）
+
+本仓库已在 Wine 10 + Windows Node 24.21 + Windows DSH 0.2.1-rc.2 下实测：
+
+- `node --test`：47 项全绿（Windows 专属用例：盘符/大小写包含判断、非法 ID、只读文件递归删除、同盘 rename 搬移）；
+- 宿主冒烟：`/sessions`、`/inspect`、`/delete`（trash/purge）、`/trash`、`/restore`、`/batch-delete`、`/empty`、非法 ID 全部通过；
+- 复现：`node scripts/wine-host-smoke.mjs`（脚本头部注释写明 Wine 侧前置：Windows Node、Windows DSH、插件装进 `C:\dsh-test-home` 的 web profile）。
+
+注意：会话与回收站都位于 `%DSH_HOME%` 内，正常永远同盘；只有把 DSH_HOME 指到别的盘时才可能触发跨盘复制。杀软/索引器短暂占用目录时删除会自动退避重试，仍失败会给出可行动错误。
+
 ## 安装
 
 插件要求 DSH `0.2.x`（`engines.dsh: ">=0.2.0-rc.1 <0.3.0-0"`）。
@@ -99,6 +121,9 @@ node tests/e2e.mjs
 
 # 批量管理 UI 冒烟（可选，需要本机 Chrome；同样自建临时实例，不碰线上）
 node scripts/ui-smoke.mjs
+
+# Windows（Wine）宿主冒烟（可选，脚本头注释写明 Wine 侧前置）
+node scripts/wine-host-smoke.mjs
 ```
 
 端到端脚本会：创建临时 `DSH_HOME`、复制一个真实会话到临时目录、用随机端口启动 `dsh web`，然后调用

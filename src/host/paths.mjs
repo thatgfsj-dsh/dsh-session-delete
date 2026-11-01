@@ -5,14 +5,25 @@
  * 本文件不 import 任何 `@deepseek-ai/*` 包，只用 Node 内置模块。
  */
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { DeleteError, ERROR_CODES } from './errors.mjs'
 
-/** DSH 主目录：优先 `DSH_HOME`，否则 `~/.dsh`。与宿主自己的解析规则一致。 */
+/** 展开 `~` / `~/` / `~\` 前缀（与官方 dsh-home-paths 一致）。 */
+function expandHomePath(path) {
+  if (path === '~') return homedir()
+  if (path.startsWith('~/') || path.startsWith('~\\')) return join(homedir(), path.slice(2))
+  return path
+}
+
+/**
+ * DSH 主目录：优先 `DSH_HOME`（空白视为未设置），否则 `~/.dsh`。
+ * 与官方 `@deepseek-ai/dsh-home-paths` 的 resolveDshHome 保持一致：
+ * 展开 `~`、resolve 成绝对路径、不依赖 `$HOME`（Windows 上 `$HOME` 不可靠）。
+ */
 export function dshHome() {
   const explicit = process.env.DSH_HOME
-  if (typeof explicit === 'string' && explicit.trim() !== '') return explicit
-  return join(process.env.HOME ?? homedir(), '.dsh')
+  const value = typeof explicit === 'string' && explicit.trim() !== '' ? explicit : join(homedir(), '.dsh')
+  return resolve(expandHomePath(value))
 }
 
 /** 插件私有数据根：`$DSH_HOME/session-delete`。 */
@@ -48,6 +59,12 @@ export function assertSessionId(id) {
   if (value.length > 200) throw fail('会话 ID 过长')
   if (value === '.' || value === '..') throw fail('会话 ID 非法')
   if (!/^[A-Za-z0-9._:-]+$/.test(value)) throw fail('会话 ID 含有非法字符')
+  // Windows 文件名额外限制：非法字符、保留设备名、结尾的点/空格都会让目录操作失败或落到 ADS。
+  if (process.platform === 'win32') {
+    if (/[<>:"|?*\u0000-\u001f]/.test(value)) throw fail('会话 ID 含有 Windows 非法字符')
+    if (/[. ]$/.test(value)) throw fail('会话 ID 不能以点或空格结尾')
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(value)) throw fail('会话 ID 是 Windows 保留设备名')
+  }
   return value
 }
 

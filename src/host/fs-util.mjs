@@ -2,7 +2,7 @@
  * 文件系统小工具：存在性判断、目录大小、原子 JSON 写、目录搬移（同盘 rename，跨盘 copy+校验+删源）。
  * 只用 Node 内置模块。
  */
-import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -87,13 +87,52 @@ export async function atomicWriteJson(path, value) {
   await rename(temp, path)
 }
 
+/** 短暂等待（Windows 上被杀软/索引器短暂占用后重试通常就好了）。 */
+const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+
+/** Windows 上可重试的文件系统错误码。 */
+const RETRYABLE_FS_CODES = new Set(['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY', 'EMFILE', 'ENFILE'])
+
+/** 是否值得重试（Windows 上句柄/只读属性导致的失败）。 */
+function isRetryable(error) {
+  return process.platform === 'win32' && RETRYABLE_FS_CODES.has(error?.code)
+}
+
+/** 递归去掉只读属性（Windows 上只读文件会让 rm/rename 失败）；失败不抛错。 */
+async function clearReadonly(path) {
+  if (process.platform !== 'win32') return
+  try {
+    const info = await lstat(path)
+    if (info.isDirectory()) {
+      await chmod(path, 0o666).catch(() => {})
+      for (const entry of await readdir(path, { withFileTypes: true })) {
+        await clearReadonly(join(path, entry.name))
+      }
+    } else {
+      await chmod(path, 0o666).catch(() => {})
+    }
+  } catch {
+    /* 清属性尽力而为 */
+  }
+}
+
 /**
  * 删除一个目录树（不存在视为成功）。
+ * Windows 上句柄占用/只读属性会短暂失败，做退避重试并在失败时清一次只读属性。
  * @param {string} path - 绝对路径。
  * @returns {Promise<void>} 删除完成。
  */
 export async function removeTree(path) {
-  await rm(path, { recursive: true, force: true, maxRetries: 3 })
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rm(path, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 })
+      return
+    } catch (error) {
+      if (attempt >= 5 || !isRetryable(error)) throw error
+      await clearReadonly(path)
+      await sleep(150 * (attempt + 1))
+    }
+  }
 }
 
 /** 判断一个错误是否是跨设备（EXDEV）错误。 */
@@ -152,12 +191,20 @@ async function verifyTree(source, target) {
  */
 export async function moveTree(source, target) {
   await mkdir(dirname(target), { recursive: true })
-  try {
-    await rename(source, target)
-    return { mode: 'rename', files: 0, bytes: 0 }
-  } catch (error) {
-    if (!isCrossDevice(error)) throw error
+  let renameError
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      await rename(source, target)
+      return { mode: 'rename', files: 0, bytes: 0 }
+    } catch (error) {
+      renameError = error
+      // Windows 上目标被短暂占用会 EPERM/EBUSY；跨卷才是 EXDEV。
+      if (!isCrossDevice(error) && !isRetryable(error)) throw error
+      if (isCrossDevice(error)) break
+      await sleep(150 * (attempt + 1))
+    }
   }
+  if (renameError !== undefined && !isCrossDevice(renameError) && !isRetryable(renameError)) throw renameError
   await copyTree(source, target)
   let verified
   try {
