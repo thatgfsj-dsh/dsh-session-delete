@@ -20,13 +20,13 @@
 
 import { spawn } from 'node:child_process'
 import { copyFile, cp, mkdtemp, readdir, readlink, rm, symlink, mkdir } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 const PROFILE = process.env.DSH_PROFILE ?? 'web'
 const REAL_HOME = process.env.DSH_REAL_HOME ?? join(homedir(), '.dsh')
-const DSH = process.env.DSH_CLI ?? 'dsh'
+const DSH = process.env.DSH_CLI ?? (process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
 const PROFILE_DIR = join(REAL_HOME, 'profiles', PROFILE)
 const PLUGIN_DIR = join(PROFILE_DIR, 'node_modules', 'dsh-session-delete')
 
@@ -97,7 +97,9 @@ async function repairSymlinks(sourceRoot, targetRoot) {
         const sourcePath = join(sourceRoot, relChild)
         const absolute = resolve(dirname(sourcePath), linkTarget)
         await rm(targetPath, { force: true })
-        await symlink(absolute, targetPath)
+        // Windows 创建符号链接需要显式类型；目录用 junction（无需开发者模式）。
+        const type = process.platform === 'win32' ? (existsSync(absolute) && statSync(absolute).isDirectory() ? 'junction' : 'file') : undefined
+        await symlink(absolute, targetPath, type)
         repaired += 1
         continue
       }
@@ -152,6 +154,8 @@ async function startServer() {
   const child = spawn(DSH, ['--profile', PROFILE, '--port', '0', '--host', '127.0.0.1', '--no-open'], {
     env: { ...process.env, DSH_HOME: tempHome },
     stdio: ['ignore', 'pipe', 'pipe'],
+    // Windows 下 dsh 是 .cmd，需要 shell 才能 spawn。
+    shell: process.platform === 'win32',
   })
   server = child
   let stdout = ''

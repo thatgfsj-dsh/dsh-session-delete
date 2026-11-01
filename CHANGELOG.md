@@ -1,5 +1,23 @@
 # 更新日志
 
+## v0.1.5（2026-11-01）
+
+### Windows 适配
+
+- 主目录解析对齐官方 `@deepseek-ai/dsh-home-paths`：`$DSH_HOME`（空白视为未设置）→ `~/.dsh`，支持 `~` 展开与 resolve 绝对路径，Windows 上不再依赖 `$HOME`。
+- `assertSessionId` 在 Windows 下额外拒绝 `<>:"|?*`、控制字符、结尾点/空格、`CON`/`NUL`/`COM1` 等保留设备名。
+- 回收站 `isInside` 改用 `path.relative`，正确处理盘符大小写、`..` 与混合分隔符。
+- 文件搬移/删除对 Windows 的 `EPERM`/`EBUSY`/`EACCES` 做退避重试；删除前按需清只读属性；跨盘仍复制→校验→删源。
+- 审计日志滚动先删旧 `.1` 再 rename，避免 Windows 下覆盖失败。
+- E2E 脚本支持 Windows：`dsh.cmd` 启动、shell spawn、符号链接用 junction；新增 `scripts/wine-host-smoke.mjs`。
+
+### 验证
+
+- Wine 10 + Windows Node 24.21 + Windows DSH 0.2.1-rc.2：
+  - `node --test` 47 项全绿（含 4 个 Windows 专属用例）；
+  - 宿主冒烟：`/sessions`、`/inspect`、`/delete`（trash/purge）、`/trash`、`/restore`、`/batch-delete`、`/empty`、非法 ID 全通过；
+- Linux 回归：单测 47 项（43 通过 + 4 个 Windows 用例跳过）、隔离 E2E 通过。
+
 ## v0.1.4（2026-11-01）
 
 红队对抗审查后的实用性修复。

@@ -3,12 +3,15 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { assertSessionId, encodeSegment, idVariants, projectKey, predictedSessionDir, sessionsRoot, trashRoot } from '../src/host/paths.mjs'
+import { join } from 'node:path'
+import { homedir, tmpdir } from 'node:os'
+import { assertSessionId, dshHome, encodeSegment, idVariants, projectKey, predictedSessionDir, sessionsRoot, trashRoot } from '../src/host/paths.mjs'
 
 test('idVariants：两种历史命名都要覆盖', () => {
   assert.deepEqual(idVariants('session-abc'), ['session-abc', 'abc'])
   assert.deepEqual(idVariants('abc'), ['abc', 'session-abc'])
-  assert.deepEqual(idVariants('session-a.b_c:d'), ['session-a.b_c:d', 'a.b_c:d'])
+  // Windows 上 ':' 是文件名非法字符，不做这个用例。
+  if (process.platform !== 'win32') assert.deepEqual(idVariants('session-a.b_c:d'), ['session-a.b_c:d', 'a.b_c:d'])
 })
 
 test('assertSessionId：拒绝空、超长、路径穿越与非法字符', () => {
@@ -31,16 +34,35 @@ test('projectKey 与官方 JSONL 布局一致', () => {
   assert.equal(projectKey('/home/u/proj/'), '--home-u-proj---')
   assert.equal(projectKey('/'), '--root--')
   assert.equal(projectKey('/home/u/中文'), '--home-u-~4E2D~6587--')
+  // Windows 盘符/反斜杠：与官方 projectKey 一样把 ':' 和 '\\' 都折成 '-'
+  assert.equal(projectKey('C:\\Users\\me\\proj'), '--C-Users-me-proj--')
+  assert.equal(projectKey('C:\\'), '--C---')
+})
+
+test('dshHome：$DSH_HOME 空白视为未设置、支持 ~、结果绝对路径', () => {
+  const previous = process.env.DSH_HOME
+  try {
+    process.env.DSH_HOME = '   '
+    assert.equal(dshHome(), join(homedir(), '.dsh'))
+    delete process.env.DSH_HOME
+    assert.equal(dshHome(), join(homedir(), '.dsh'))
+    process.env.DSH_HOME = '~/custom-dsh'
+    assert.equal(dshHome(), join(homedir(), 'custom-dsh'))
+  } finally {
+    if (previous === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previous
+  }
 })
 
 test('predictedSessionDir 按 DSH_HOME 推算', () => {
   const previous = process.env.DSH_HOME
-  process.env.DSH_HOME = '/tmp/dsh-home-x'
+  const home = join(tmpdir(), 'dsh-home-x')
+  process.env.DSH_HOME = home
   try {
-    assert.equal(predictedSessionDir('session-1', '/a/b'), '/tmp/dsh-home-x/sessions/--a-b--/session-1')
-    assert.equal(predictedSessionDir('session-1', undefined), '/tmp/dsh-home-x/sessions/_no-cwd/session-1')
-    assert.equal(trashRoot(), '/tmp/dsh-home-x/session-delete/trash')
-    assert.equal(sessionsRoot(), '/tmp/dsh-home-x/sessions')
+    assert.equal(predictedSessionDir('session-1', '/a/b'), join(home, 'sessions', '--a-b--', 'session-1'))
+    assert.equal(predictedSessionDir('session-1', undefined), join(home, 'sessions', '_no-cwd', 'session-1'))
+    assert.equal(trashRoot(), join(home, 'session-delete', 'trash'))
+    assert.equal(sessionsRoot(), join(home, 'sessions'))
   } finally {
     if (previous === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previous
