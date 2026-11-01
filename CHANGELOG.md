@@ -1,5 +1,20 @@
 # 更新日志
 
+## v0.1.6（2026-11-02）
+
+### 文档
+
+- README 新增「界面截图」章节：7 张**实机截图**（侧栏行内删除按钮、中文删除确认弹窗、批量管理模式、批量确认框、回收站设置页、清空二次确认、Windows 实例）。
+- 新增 `scripts/screenshots.mjs`、`scripts/screenshots-windows.mjs` 与 `scripts/lib/{fixture,cdp}.mjs`：
+  - 只在**临时实例**上拍（临时 `DSH_HOME` + 复制 profile + `--port 0` 随机端口），**不占用主端口 3080**，不碰线上实例；
+  - 画面里的会话与工作区是脚本造的**合成数据**，不含任何真实对话内容；
+  - 截图后自动核对每张图的关键词与像素哈希，避免「图和代码对不上」。
+
+### 验证
+
+- `node scripts/screenshots.mjs`：6 张图，关键词与哈希自检全过（重复图为 0）。
+- `node scripts/screenshots-windows.mjs`：Windows DSH 实例（Wine + Windows Node 24 + Windows DSH 0.2.1-rc.2）1 张图，自检通过。
+
 ## v0.1.5（2026-11-01）
 
 ### Windows 适配

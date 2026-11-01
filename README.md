@@ -16,6 +16,53 @@
 - **即时刷新**：删除后广播 `api-session/removed`，侧栏行立即消失；还原后主动刷新会话列表。
 - **失败可解释**：分步执行并记录每一步；可回滚项回滚；返回中文错误与残留文件清单，不静默失败。
 
+## 界面截图
+
+> 全部截图来自**真实运行的 DSH 实例**（临时 `DSH_HOME` + 复制 profile + `--port 0` 随机端口，不占用主端口），
+> 画面中的会话与工作区是脚本生成的**合成数据**，不含任何真实对话内容。
+
+### 侧栏会话行内的删除按钮
+
+悬停会话行，行尾出现垃圾桶图标；`⋯` 菜单里也有「删除会话…」。
+
+![侧栏会话行内的删除按钮](docs/screenshots/01-sidebar-row-delete.png)
+
+### 单个会话删除的中文确认弹窗
+
+显示标题、会话 ID、是否当前打开、工作区、占用空间、运行状态、子代理数量，以及「将清理什么」。
+
+![单个会话删除的中文确认弹窗](docs/screenshots/02-delete-confirm-dialog.png)
+
+### 批量管理：会话行前勾选框 + 底部批量操作栏
+
+点侧栏「工作区」标题行右侧图标进入多选模式，勾选框直接出现在**会话前面**；底部浮动栏提供全选可见、清空、停止运行中会话、移入回收站、彻底删除、退出。
+
+![批量管理模式](docs/screenshots/03-batch-mode.png)
+
+### 批量操作的确认框
+
+批量移入回收站前必弹确认框：处理数量、总大小、工作区分布、运行中/归档/含子代理的条数，以及「先停止运行中的会话」是否勾选。
+
+![批量移入回收站的确认框](docs/screenshots/04-batch-confirm-dialog.png)
+
+### 插件设置页的「会话回收站」
+
+逐条还原 / 彻底删除、勾选批量还原、保留天数（7/15/30/90 天或永久）、启动时清理、用量统计。
+
+![插件设置页的会话回收站](docs/screenshots/05-trash-settings.png)
+
+### 清空回收站的二次确认
+
+危险操作先弹确认面板，不点「确认清空」就不会执行。
+
+![清空回收站的二次确认](docs/screenshots/06-empty-trash-confirm.png)
+
+### Windows 实例
+
+下面是**真正的 Windows DSH**（Wine 前缀里的 Windows Node 24 + Windows DSH 0.2.1-rc.2）上的同一界面，工作区路径是 `C:\…` 形式。
+
+![Windows 实例上的插件界面](docs/screenshots/07-windows-instance.png)
+
 ## Windows
 
 插件已做 Windows 适配，客户端 UI 与平台无关，主要改动在宿主：
@@ -124,6 +171,12 @@ node scripts/ui-smoke.mjs
 
 # Windows（Wine）宿主冒烟（可选，脚本头注释写明 Wine 侧前置）
 node scripts/wine-host-smoke.mjs
+
+# 重新生成 README 里的实机截图（可选，需要本机 Chrome；自建临时实例 + 随机端口）
+node scripts/screenshots.mjs
+
+# Windows 实例截图（可选，需要 Wine 前缀里已装好 Windows DSH 与插件）
+node scripts/screenshots-windows.mjs
 ```
 
 端到端脚本会：创建临时 `DSH_HOME`、复制一个真实会话到临时目录、用随机端口启动 `dsh web`，然后调用
@@ -132,12 +185,13 @@ node scripts/wine-host-smoke.mjs
 
 ### 验证状态
 
-- 宿主半边：单测 35 项全绿；隔离环境 HTTP 全链路（inspect/delete/trash/restore/purge/settings）通过。
+- 宿主半边：单测 47 项全绿（Windows 专属 4 项在 Linux 上跳过）；隔离环境 HTTP 全链路（inspect/delete/trash/restore/purge/settings）通过。
 - 客户端半边：headless Chrome（临时实例）实测行内按钮、`⋯` 菜单「删除会话…」、中文确认弹窗、回收站列表/还原/彻底删除均可用，控制台无 error / exception；manifest、slot 契约、bundle 组合静态与运行时检查通过。
 - v0.1.1 批量管理：宿主接口与面板逻辑已测；标题行入口通过 DOM 锚点挂载（官方无公开插槽），官方 UI 大改版时可能失效，失效后会自动降级到侧栏底部入口。
 - v0.1.4 批量管理 UI 已用 headless Chrome 在自建临时实例上实测：标题行入口、会话行勾选框、底部批量栏、全选仅覆盖可见行、确认框、删除后侧栏行及时消失、toast 完整可见（见 `node scripts/ui-smoke.mjs`）。
 - 会话行勾选框通过注入官方会话行 DOM（`data-row-key="session:<id>"`）实现：官方 leading 插槽只在空闲行挂载且会被状态点占用，覆盖不全；注入点随官方 UI 结构变化可能失效，失效时底部批量栏仍可用（可全选可见）。
 - **仍需真机点验**：批量面板拖拽/滚动交互、运行中 / 运行中子代理状态下的弹窗、明暗主题切换、删除当前会话后的主视图清空（已实现，调用官方 `uiWorkspace.clearMain()`）、真实鼠标操作。
+- README 里的 7 张截图由 `node scripts/screenshots.mjs` 与 `node scripts/screenshots-windows.mjs` 生成：临时实例 + 随机端口（不占用主端口 3080），画面里的会话是脚本造的合成数据，脚本还会核对每张图的关键词与哈希，避免「图和代码对不上」。
 
 ## 目录结构
 
@@ -151,6 +205,9 @@ src/host/execute.mjs          删除事务编排、回滚、结果汇总
 src/host/sessions-list.mjs    批量管理用的轻量会话清单
 src/host/batch.mjs            批量删除参数校验与逐条执行
 src/host/{http,errors,paths,fs-util,audit}.mjs  基础设施
+scripts/screenshots.mjs         生成 README 实机截图（Linux 临时实例）
+scripts/screenshots-windows.mjs 生成 Windows 实例截图（Wine + Windows DSH）
+scripts/lib/{fixture,cdp}.mjs   合成会话夹具 / CDP 小工具
 src/client/base.js            词典、工具函数、样式、共享 store
 src/client/delete-ui.js       行内按钮 / 菜单项 / 确认弹窗 / 设置页回收站
 src/client/batch-ui.js        批量管理：标题行入口 + 会话行勾选 + 底部操作栏
