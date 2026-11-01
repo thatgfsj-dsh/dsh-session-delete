@@ -22,13 +22,16 @@ const TEXT = { 'action.delete': '删除会话…', 'action.deleteHint': '删除�
 'settings.column.workspace': '工作区', 'settings.column.deletedAt': '删除时间', 'settings.column.size': '大小', 'settings.column.actions': '操作', 'settings.untitled': '（无标题会话）', 'settings.restore': '还原', 'settings.purge': '彻底删除',
 'settings.purgeConfirm': '确认彻底删除？', 'settings.restored': '已还原会话', 'settings.purged': '已彻底删除', 'settings.actionFailed': '操作失败：{detail}', 'settings.policy': '保留策略', 'settings.retention': '保留天数',
 'settings.retention.7': '7 天', 'settings.retention.15': '15 天', 'settings.retention.30': '30 天', 'settings.retention.90': '90 天', 'settings.retention.0': '永久保留', 'settings.retentionHint': '超过保留天数的条目会在宿主启动时自动清理。',
-'settings.sweepOnStartup': '启动时自动清理过期条目', 'settings.sweepNow': '立即清理', 'settings.emptyTrash': '清空回收站', 'settings.emptyConfirm': '确认清空回收站？此操作不可撤销。', 'settings.sweepDone': '已清理 {n} 条过期条目',
-'settings.emptyDone': '已清空回收站（{n} 条）', 'settings.settingsFailed': '保存设置失败：{detail}', 'settings.subagents': '含 {n} 个子代理会话', 'settings.archived': '已归档', 'settings.pinned': '已置顶', 'common.yes': '是', 'common.no': '否',
-'batch.open': '批量管理', 'batch.title': '批量管理', 'batch.desc': '勾选会话后批量移入回收站或彻底删除；运行中子代理的会话会被整体拒绝。', 'batch.filter.all': '全部', 'batch.filter.active': '未归档', 'batch.filter.archived': '已归档', 'batch.search': '搜索标题、工作区或路径',
-'batch.selectAll': '全选', 'batch.invert': '反选', 'batch.clear': '清空选择', 'batch.selected': '已选 {n} 个', 'batch.stop': '先停止运行中的会话', 'batch.trash': '移入回收站', 'batch.purge': '彻底删除', 'batch.purgeConfirm': '确认彻底删除',
-'batch.cancel': '取消', 'batch.loading': '正在读取会话…', 'batch.loadFailed': '读取会话失败：{detail}', 'batch.empty': '没有符合条件的会话', 'batch.none': '请先勾选会话', 'batch.working': '正在处理 {total} 个会话…', 'batch.summary': '成功 {ok} 个，失败 {fail} 个',
-'batch.failures': '失败项', 'batch.archived': '已归档', 'batch.pinned': '已置顶', 'batch.running': '运行中', 'batch.subagents': '子代理 {n}', 'batch.ungrouped': '未分组', 'batch.refresh': '刷新', 'batch.close': '关闭',
-'batch.headerFailed': '标题行入口不可用，已放到侧栏底部', 'batch.exit': '退出批量', 'batch.checkbox': '选择此会话', 'batch.hostUnavailable': '宿主接口不可用：请重启 dsh web 后重试（批量接口需要宿主 0.1.1+）', }
+'settings.sweepOnStartup': '启动时自动清理过期条目', 'settings.sweepNow': '立即清理', 'settings.emptyTrash': '清空回收站', 'settings.selectAll': '全选', 'settings.batchRestore': '批量还原', 'settings.batchRestoreDone': '已还原 {n} 条',
+'settings.selectedCount': '已选 {n} 条', 'settings.confirmEmptyYes': '确认清空', 'settings.confirmPurgeYes': '确认彻底删除', 'settings.confirmEmptyHint': '确认清空回收站？此操作不可撤销。', 'settings.confirmPurgeHint': '确认彻底删除这条回收站记录？此操作不可撤销。',
+'settings.confirmCancel': '取消', 'settings.emptyConfirm': '确认清空回收站？此操作不可撤销。', 'settings.sweepDone': '已清理 {n} 条过期条目', 'settings.emptyDone': '已清空回收站（{n} 条）', 'settings.settingsFailed': '保存设置失败：{detail}',
+'settings.subagents': '含 {n} 个子代理会话', 'settings.archived': '已归档', 'settings.pinned': '已置顶', 'common.yes': '是', 'common.no': '否', 'batch.open': '批量管理', 'batch.title': '批量管理', 'batch.clear': '清空选择',
+'batch.selected': '已选 {n} 个', 'batch.stop': '先停止运行中的会话', 'batch.trash': '移入回收站', 'batch.purge': '彻底删除', 'batch.loadFailed': '读取会话失败：{detail}', 'batch.none': '请先勾选会话', 'batch.working': '正在处理 {total} 个会话…',
+'batch.summary': '成功 {ok} 个，失败 {fail} 个', 'batch.selectAllVisible': '全选可见', 'batch.selectAllCapped': '一次最多处理 200 个会话，已选中前 200 个', 'batch.confirm.trashTitle': '确认移入回收站？', 'batch.confirm.purgeTitle': '确认彻底删除？',
+'batch.confirm.summary': '将处理 {n} 个会话，合计 {size}。', 'batch.confirm.workspaces': '工作区分布：{list}', 'batch.confirm.breakdown': '其中：运行中 {running} 个、已归档 {archived} 个、含子代理 {subagents} 个',
+'batch.confirm.stopOn': '已勾选「先停止运行中的会话」', 'batch.confirm.stopOff': '未勾选「先停止运行中的会话」，运行中的会话会被拒绝', 'batch.confirm.trashNote': '删除后可在「设置 → 会话回收站」还原。', 'batch.confirm.purgeWarning': '彻底删除不进回收站，删除后无法恢复。',
+'batch.confirm.trashConfirm': '确认移入回收站', 'batch.confirm.purgeConfirm': '确认彻底删除', 'batch.confirm.cancel': '取消', 'batch.failureLine': '会话「{title}」（{id}）：{detail}', 'batch.failedKept': '失败项已保留勾选，可直接重试',
+'batch.failures': '失败项：', 'batch.unGroupedTitle': '未分组', 'batch.refresh': '刷新', 'batch.close': '关闭', 'batch.exit': '退出批量', 'batch.checkbox': '选择此会话', 'batch.hostUnavailable': '宿主接口不可用：请重启 dsh web 后重试（批量接口需要宿主 0.1.1+）', }
 const en = TEXT
 /** 把字节数变成人话。 */
 function formatBytes(bytes) { const value = Number(bytes)
@@ -160,14 +163,13 @@ marginTop: '18px', }, button: { padding: '7px 14px', borderRadius: '8px', border
 cursor: 'pointer', }, buttonPrimary: { border: '1px solid transparent', background: 'var(--dsw-alias-button-primary-fill)', color: 'var(--dsw-alias-label-primary-foreground)', }, buttonDanger: {
 border: '1px solid var(--dsw-alias-state-error-primary)', color: 'var(--dsw-alias-state-error-primary)', background: 'transparent', }, buttonDisabled: { opacity: 0.5, cursor: 'not-allowed' }, checkboxRow: {
 display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', fontSize: '13px', color: 'var(--dsw-alias-label-primary)', }, notice: { position: 'fixed', right: '20px', bottom: '20px', zIndex: 4100,
-maxWidth: '380px', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-3)', color: 'var(--dsw-alias-label-primary)',
-boxShadow: '0 8px 24px rgba(0, 0, 0, 0.24)', fontSize: '13px', lineHeight: 1.6, pointerEvents: 'auto', whiteSpace: 'pre-wrap', position: 'relative', paddingRight: '24px', }, noticeClose: { position: 'absolute',
-top: '6px', right: '8px', border: 'none', background: 'transparent', color: 'var(--dsw-alias-label-tertiary)', fontSize: '14px', lineHeight: 1, cursor: 'pointer', padding: '2px', }, cardPanel: { padding: '16px',
-borderRadius: '10px', border: '1px solid var(--dsw-alias-settings-card-stroke)', background: 'var(--dsw-alias-settings-card-fill)', marginBottom: '12px', },
-table: { width: '100%', borderCollapse: 'collapse', fontSize: '13px' }, th: { textAlign: 'left', padding: '8px 10px', color: 'var(--dsw-alias-label-tertiary)', fontWeight: 500,
-borderBottom: '1px solid var(--dsw-alias-border-l1)', whiteSpace: 'nowrap', }, td: { padding: '8px 10px', borderBottom: '1px solid var(--dsw-alias-border-l1)', color: 'var(--dsw-alias-label-primary)',
-verticalAlign: 'top', }, smallButton: { padding: '3px 9px', borderRadius: '6px', border: '1px solid var(--dsw-alias-border-l1)', background: 'transparent', color: 'var(--dsw-alias-label-primary)', fontSize: '12px',
-cursor: 'pointer', marginRight: '6px', }, }
+maxWidth: '380px', padding: '12px 28px 12px 14px', borderRadius: '10px', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-3)', color: 'var(--dsw-alias-label-primary)',
+boxShadow: '0 8px 24px rgba(0, 0, 0, 0.24)', fontSize: '13px', lineHeight: 1.6, pointerEvents: 'auto', whiteSpace: 'pre-wrap', }, noticeClose: { position: 'absolute', top: '6px', right: '8px', border: 'none',
+background: 'transparent', color: 'var(--dsw-alias-label-tertiary)', fontSize: '14px', lineHeight: 1, cursor: 'pointer', padding: '2px', }, cardPanel: { padding: '16px', borderRadius: '10px',
+border: '1px solid var(--dsw-alias-settings-card-stroke)', background: 'var(--dsw-alias-settings-card-fill)', marginBottom: '12px', }, table: { width: '100%', borderCollapse: 'collapse', fontSize: '13px' }, th: {
+textAlign: 'left', padding: '8px 10px', color: 'var(--dsw-alias-label-tertiary)', fontWeight: 500, borderBottom: '1px solid var(--dsw-alias-border-l1)', whiteSpace: 'nowrap', }, td: { padding: '8px 10px',
+borderBottom: '1px solid var(--dsw-alias-border-l1)', color: 'var(--dsw-alias-label-primary)', verticalAlign: 'top', }, smallButton: { padding: '3px 9px', borderRadius: '6px',
+border: '1px solid var(--dsw-alias-border-l1)', background: 'transparent', color: 'var(--dsw-alias-label-primary)', fontSize: '12px', cursor: 'pointer', marginRight: '6px', }, }
 /** 一个带 hover 反馈的图标按钮。 */
 function HoverIconButton({ label, onClick, children }) { const [hover, setHover] = useState(false)
 return h('button', { type: 'button', title: label, 'aria-label': label, style: hover ? { ...styles.iconButton, ...styles.iconButtonHover } : styles.iconButton, onMouseEnter: () => setHover(true),
@@ -216,7 +218,8 @@ useEffect(() => { closedRef.current = false
 void load()
 return () => { closedRef.current = true }
 }, [load])
-useEffect(() => { const onKeyDown = (event) => { if (event.key === 'Escape' && busy === '') { dialogStore.close()
+useEffect(() => { const onKeyDown = (event) => { if (event.key === 'Escape' && busy === '') { event.stopImmediatePropagation()
+dialogStore.close()
 return
 }
 if (event.key !== 'Tab') return
@@ -240,6 +243,9 @@ useEffect(() => { if (state.phase === 'ready') primaryRef.current?.focus?.()
 }, [state.phase])
 const session = state.data
 const running = session?.running === true
+let uiWorkspace
+try { uiWorkspace = ctx.uiWorkspace ?? ctx.get?.('uiWorkspace') } catch { uiWorkspace = undefined }
+const isCurrent = uiWorkspace?.mainReference?.sessionId === request.sessionId
 const runningChildren = Array.isArray(session?.descendants) ? session.descendants.filter(item => item.running === true).length : 0
 const blocked = runningChildren > 0 || (running && !stopFirst)
 const close = () => { if (busy === '') dialogStore.close() }
@@ -275,7 +281,7 @@ if (state.phase === 'loading') { children.push(h('p', { style: styles.hint, key:
 const runningChildren = subagents.filter(item => item.running === true).length
 const stateText = running ? t('field.state.running') : t('field.state.idle')
 children.push(h('div', { style: styles.fieldRow, key: 'fields' }, h(Field, { label: t('field.sessionId') }, h('code', { style: { fontSize: '12px' } }, shortId(session.sessionId))),
-h(Field, { label: t('field.workspace') }, session.workspace === null || session.workspace === undefined
+h(Field, { label: t('field.current') }, isCurrent ? t('field.current.yes') : t('field.current.no')), h(Field, { label: t('field.workspace') }, session.workspace === null || session.workspace === undefined
 ? '—'
 : `${session.workspace.title || session.workspace.path}（${session.workspace.path}）`), h(Field, { label: t('field.size') }, formatBytes(session.sizeBytes)),
 h(Field, { label: t('field.state') }, running ? `${stateText} · ${t('field.state.runningHint')}` : `${stateText} · ${session.live ? t('field.state.live') : t('field.state.cold')}`),
@@ -319,19 +325,25 @@ return h(React.Fragment, null, h(BatchHeaderMount, { t }), h(BatchRowInjector, {
 request === null ? null : h(DeleteConfirmDialog, { key: `${request.sessionId}:${request.nonce}`, request, ctx, t }), notice === null ? null : h('div', { style: styles.notice, role: 'status', }, notice.text, h('button', {
 type: 'button', 'aria-label': '关闭提示', style: styles.noticeClose, onClick: () => noticeStore.clear(), }, '×')), )
 }
-/** 设置页「会话回收站」。 */
+/** 设置页「会话回收站」：逐条还原/彻底删除 + 勾选批量还原。 */
 function TrashSettingsSection({ ctx, t }) { const [state, setState] = useState({ phase: 'loading', entries: [], usage: { count: 0, bytes: 0 }, settings: null, error: '' })
 const [busy, setBusy] = useState('')
-const [armed, setArmed] = useState('')
+const [selected, setSelected] = useState(() => new Set())
+const [confirmPurge, setConfirmPurge] = useState('')
+const [confirmEmpty, setConfirmEmpty] = useState(false)
 const load = useCallback(async () => { setState(previous => ({ ...previous, phase: previous.entries.length === 0 ? 'loading' : previous.phase, error: '' }))
 try { const result = await apiGet('/trash')
-if (result?.ok === true) { setState({ phase: 'ready', entries: result.entries ?? [], usage: result.usage ?? { count: 0, bytes: 0 }, settings: result.settings ?? null, error: '' })
+if (result?.ok === true) { const entries = result.entries ?? []
+setState({ phase: 'ready', entries, usage: result.usage ?? { count: 0, bytes: 0 }, settings: result.settings ?? null, error: '' })
+setSelected(previous => new Set([...previous].filter(trashId => entries.some(entry => entry.trashId === trashId))))
 } else { setState(previous => ({ ...previous, phase: 'error', error: errorText(result, t('settings.loadFailed', { detail: '未知错误' })) }))
 }
 } catch (error) { setState(previous => ({ ...previous, phase: 'error', error: t('settings.loadFailed', { detail: error instanceof Error ? error.message : String(error) }) }))
 }
 }, [t])
 useEffect(() => { void load() }, [load])
+const entries = state.entries
+const selectedEntries = entries.filter(entry => selected.has(entry.trashId))
 const act = async (kind, work) => { setBusy(kind)
 try { const result = await work()
 if (result?.ok !== true) { noticeStore.show({ kind: 'error', text: errorText(result, t('settings.actionFailed', { detail: '未知错误' })) })
@@ -342,8 +354,25 @@ if (kind === 'restore') refreshSessionList(ctx)
 await load()
 } catch (error) { noticeStore.show({ kind: 'error', text: t('settings.actionFailed', { detail: error instanceof Error ? error.message : String(error) }) })
 } finally { setBusy('')
-setArmed('')
+setConfirmPurge('')
+setConfirmEmpty(false)
 }
+}
+const batchRestore = async () => { if (selectedEntries.length === 0) return
+setBusy('batch-restore')
+let ok = 0
+let failed = 0
+for (const entry of selectedEntries) { try { const result = await apiPost('/restore', { sessionId: entry.sessionId })
+if (result?.ok === true) ok += 1
+else failed += 1
+} catch { failed += 1
+}
+}
+noticeStore.show({ kind: failed > 0 ? 'warn' : 'ok', text: failed > 0 ? `${t('settings.batchRestoreDone', { n: ok })}，失败 ${failed} 条` : t('settings.batchRestoreDone', { n: ok }), sticky: failed > 0, })
+refreshSessionList(ctx)
+await load()
+setSelected(new Set())
+setBusy('')
 }
 const saveSettings = async (patch) => { setBusy('settings')
 try { const result = await apiPost('/settings', patch)
@@ -353,36 +382,54 @@ else noticeStore.show({ kind: 'error', text: errorText(result, t('settings.setti
 } finally { setBusy('')
 }
 }
+const toggleEntry = trashId => setSelected(previous => { const next = new Set(previous)
+if (next.has(trashId)) next.delete(trashId)
+else next.add(trashId)
+return next
+})
+const toggleAll = () => setSelected(previous => ( previous.size >= entries.length && entries.length > 0 ? new Set() : new Set(entries.map(entry => entry.trashId))
+))
 const settings = state.settings ?? { retentionDays: 30, sweepOnStartup: true }
-const rows = state.entries.map(entry => h('tr', { key: entry.trashId }, h('td', { style: styles.td }, h('div', { style: { fontWeight: 500 } }, entry.title || t('settings.untitled')),
+const rows = entries.map(entry => h('tr', { key: entry.trashId }, h('td', { style: { ...styles.td, width: '28px' } }, h('input', { type: 'checkbox', checked: selected.has(entry.trashId), disabled: busy !== '',
+'aria-label': t('settings.selectAll'), onChange: () => toggleEntry(entry.trashId), }), ), h('td', { style: styles.td }, h('div', { style: { fontWeight: 500 } }, entry.title || t('settings.untitled')),
 h('div', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' } }, shortId(entry.sessionId)),
 entry.members.length > 1 ? h('div', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' } }, t('settings.subagents', { n: entry.members.length - 1 })) : null, ),
 h('td', { style: styles.td }, entry.workspaceTitle || entry.workspacePath || '—'), h('td', { style: styles.td }, formatTime(entry.deletedAt)), h('td', { style: styles.td }, formatBytes(entry.sizeBytes)),
 h('td', { style: styles.td }, h('button', { type: 'button', style: styles.smallButton, disabled: busy !== '', onClick: () => void act('restore', () => apiPost('/restore', { sessionId: entry.sessionId })),
-}, t('settings.restore')), h('button', { type: 'button', style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' }, disabled: busy !== '', onClick: () => {
-if (armed !== entry.trashId) { setArmed(entry.trashId); return }
-void act('purge', () => apiPost('/purge', { sessionId: entry.sessionId }))
-}, }, armed === entry.trashId ? t('settings.purgeConfirm') : t('settings.purge')), ), ))
+}, t('settings.restore')), h('button', { type: 'button', style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' }, disabled: busy !== '', onClick: () => setConfirmPurge(entry.trashId),
+}, t('settings.purge')), ), ))
 return h('section', { style: { maxWidth: '860px' } }, h('h2', { style: { margin: '0 0 6px', fontSize: '16px', fontWeight: 600 } }, t('settings.title')), h('p', { style: styles.hint }, t('settings.description')),
 h('div', { style: styles.cardPanel }, h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' } },
 h('div', { style: { fontSize: '13px', fontWeight: 500 } }, t('settings.usage', { count: state.usage.count, size: formatBytes(state.usage.bytes) })),
 h('button', { type: 'button', style: styles.smallButton, disabled: busy !== '', onClick: () => void load() }, t('settings.refresh')), ),
 state.phase === 'loading' ? h('p', { style: styles.hint }, t('settings.loading')) : null, state.error !== '' ? h('p', { style: styles.error }, state.error) : null,
-state.phase === 'ready' && state.entries.length === 0 ? h('p', { style: styles.hint }, t('settings.empty')) : null, state.entries.length > 0 ? h('div', { style: { marginTop: '10px', overflowX: 'auto' } },
-h('table', { style: styles.table }, h('thead', null, h('tr', null, h('th', { style: styles.th }, t('settings.column.title')), h('th', { style: styles.th }, t('settings.column.workspace')),
-h('th', { style: styles.th }, t('settings.column.deletedAt')), h('th', { style: styles.th }, t('settings.column.size')), h('th', { style: styles.th }, t('settings.column.actions')), )), h('tbody', null, rows), ),
-) : null, ), h('div', { style: styles.cardPanel }, h('div', { style: { fontSize: '13px', fontWeight: 500, marginBottom: '8px' } }, t('settings.policy')),
-h('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' } }, h('span', null, t('settings.retention')), h('select', { value: String(settings.retentionDays), disabled: busy !== '',
-onChange: event => void saveSettings({ retentionDays: Number(event.target.value) }),
+state.phase === 'ready' && entries.length === 0 ? h('p', { style: styles.hint }, t('settings.empty')) : null,
+entries.length > 0 ? h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', flexWrap: 'wrap' } }, h('label', { style: styles.checkboxRow },
+h('input', { type: 'checkbox', checked: selected.size >= entries.length && entries.length > 0, disabled: busy !== '', onChange: toggleAll }), h('span', null, t('settings.selectAll')), ),
+h('span', { style: styles.hint }, t('settings.selectedCount', { n: selected.size })), h('button', { type: 'button', style: styles.smallButton, disabled: busy !== '' || selected.size === 0,
+onClick: () => void batchRestore(), }, t('settings.batchRestore')), ) : null,
+confirmPurge !== '' ? h('div', { style: { marginTop: '10px', padding: '10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-state-error-primary)' } },
+h('p', { style: { ...styles.hint, color: 'var(--dsw-alias-state-error-primary)' } }, t('settings.confirmPurgeHint')), h('div', { style: { display: 'flex', gap: '8px' } },
+h('button', { type: 'button', style: styles.smallButton, disabled: busy !== '', onClick: () => setConfirmPurge('') }, t('settings.confirmCancel')), h('button', { type: 'button',
+style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' }, disabled: busy !== '', onClick: () => { const entry = entries.find(item => item.trashId === confirmPurge)
+if (entry !== undefined) void act('purge', () => apiPost('/purge', { sessionId: entry.sessionId }))
+}, }, t('settings.confirmPurgeYes')), ), ) : null, confirmEmpty ? h('div', { style: { marginTop: '10px', padding: '10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-state-error-primary)' } },
+h('p', { style: { ...styles.hint, color: 'var(--dsw-alias-state-error-primary)' } }, t('settings.confirmEmptyHint')), h('div', { style: { display: 'flex', gap: '8px' } },
+h('button', { type: 'button', style: styles.smallButton, disabled: busy !== '', onClick: () => setConfirmEmpty(false) }, t('settings.confirmCancel')), h('button', { type: 'button',
+style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' }, disabled: busy !== '', onClick: () => void act('empty', () => apiPost('/empty', { onlyExpired: false })),
+}, t('settings.confirmEmptyYes')), ), ) : null, entries.length > 0 ? h('div', { style: { marginTop: '10px', overflowX: 'auto' } }, h('table', { style: styles.table }, h('thead', null, h('tr', null,
+h('th', { style: styles.th }, ''), h('th', { style: styles.th }, t('settings.column.title')), h('th', { style: styles.th }, t('settings.column.workspace')), h('th', { style: styles.th }, t('settings.column.deletedAt')),
+h('th', { style: styles.th }, t('settings.column.size')), h('th', { style: styles.th }, t('settings.column.actions')), )), h('tbody', null, rows), ), ) : null, ), h('div', { style: styles.cardPanel },
+h('div', { style: { fontSize: '13px', fontWeight: 500, marginBottom: '8px' } }, t('settings.policy')), h('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' } },
+h('span', null, t('settings.retention')), h('select', { value: String(settings.retentionDays), disabled: busy !== '', onChange: event => void saveSettings({ retentionDays: Number(event.target.value) }),
 style: { padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' },
 }, [7, 15, 30, 90, 0].map(days => h('option', { key: days, value: String(days) }, t(`settings.retention.${days}`)))), ), h('p', { style: styles.hint }, t('settings.retentionHint')),
 h('label', { style: { ...styles.checkboxRow, marginTop: '10px' } }, h('input', { type: 'checkbox', checked: settings.sweepOnStartup === true, disabled: busy !== '',
 onChange: event => void saveSettings({ sweepOnStartup: event.target.checked }), }), h('span', null, t('settings.sweepOnStartup')), ), h('div', { style: { ...styles.footer, justifyContent: 'flex-start' } }, h('button', {
 type: 'button', style: styles.smallButton, disabled: busy !== '', onClick: () => void act('sweep', () => apiPost('/empty', { onlyExpired: true })), }, t('settings.sweepNow')), h('button', { type: 'button',
-style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' }, disabled: busy !== '', onClick: () => { if (armed !== 'empty') { setArmed('empty'); return }
-void act('empty', () => apiPost('/empty', { onlyExpired: false }))
-}, }, armed === 'empty' ? t('settings.emptyConfirm') : t('settings.emptyTrash')), ), ), )
+style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' }, disabled: busy !== '', onClick: () => setConfirmEmpty(true), }, t('settings.emptyTrash')), ), ), )
 }
+const MAX_SELECT = 200
 const batchStore = { value: { mode: false, selected: new Set(), headerStatus: 'pending' }, listeners: new Set(), emit() { for (const listener of [...this.listeners]) listener() },
 subscribe(listener) { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }, getSnapshot() { return this.value }, setMode(mode) {
 this.value = { ...this.value, mode, selected: mode ? this.value.selected : new Set() }
@@ -402,18 +449,34 @@ const subscribeBatch = listener => batchStore.subscribe(listener)
 const getBatchSnapshot = () => batchStore.getSnapshot()
 function useBatch() { return useSyncExternalStore(subscribeBatch, getBatchSnapshot, getBatchSnapshot)
 }
+/** 当前侧栏已挂载勾选框的会话 ID（即用户看得见的行）。 */
+function visibleSessionIds() { return Array.from(document.querySelectorAll('[data-dsh-session-delete-select]'))
+.map(node => node.getAttribute('data-dsh-session-delete-select') ?? '')
+.filter(id => id !== '')
+}
+/** 从会话行 DOM 里取标题（失败项展示用，拿不到就退回 ID）。 */
+function rowTitleOf(sessionId) { const host = document.querySelector(`[data-dsh-session-delete-select="${sessionId}"]`)
+const row = host?.parentElement
+const text = (row?.textContent ?? '').trim()
+return text === '' ? '' : text.split('\n')[0].slice(0, 60)
+}
 const batchStyles = {
 trigger: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', padding: 0, border: 'none', borderRadius: 'var(--dsw-radius-sm, 6px)', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', cursor: 'pointer', flex: 'none' },
 triggerActive: { background: 'var(--dsw-alias-interactive-bg-hover)', color: 'var(--dsw-alias-state-business-primary)' },
-footerAction: { display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '6px 10px', border: 'none', borderRadius: '6px', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', fontSize: '13px', cursor: 'pointer' },
-bar: { position: 'fixed', left: '50%', bottom: '24px', transform: 'translateX(-50%)', zIndex: 4060, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', maxWidth: '92vw', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-3)', color: 'var(--dsw-alias-label-primary)', boxShadow: '0 12px 40px var(--dsw-alias-bg-overlay, rgba(0, 0, 0, 0.28))', pointerEvents: 'auto' },
+footerAction: { display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '6px 10px', border: 'none', borderRadius: '6px', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' },
+bar: { position: 'fixed', left: '50%', bottom: '96px', transform: 'translateX(-50%)', zIndex: 4060, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', maxWidth: '92vw', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-3)', color: 'var(--dsw-alias-label-primary)', boxShadow: '0 12px 40px var(--dsw-alias-bg-overlay, rgba(0, 0, 0, 0.28))', pointerEvents: 'auto' },
 count: { fontSize: '13px', fontWeight: 600, marginRight: '4px' },
 button: { padding: '5px 11px', borderRadius: '7px', border: '1px solid var(--dsw-alias-border-l1)', background: 'transparent', color: 'var(--dsw-alias-label-primary)', fontSize: '12px', cursor: 'pointer' },
 primary: { padding: '5px 12px', borderRadius: '7px', border: '1px solid transparent', background: 'var(--dsw-alias-button-primary-fill)', color: 'var(--dsw-alias-label-primary-foreground)', fontSize: '12px', cursor: 'pointer' },
 danger: { padding: '5px 12px', borderRadius: '7px', border: '1px solid var(--dsw-alias-state-error-primary)', background: 'transparent', color: 'var(--dsw-alias-state-error-primary)', fontSize: '12px', cursor: 'pointer' },
 disabled: { opacity: 0.5, cursor: 'not-allowed' }, checkboxRow: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' },
-failures: { flexBasis: '100%', maxHeight: '110px', overflow: 'auto', padding: '6px 8px', borderRadius: '8px', border: '1px solid var(--dsw-alias-state-error-primary)', color: 'var(--dsw-alias-state-error-primary)', fontSize: '11px', lineHeight: 1.6, whiteSpace: 'pre-wrap' },
-progress: { fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' }, }
+failures: { flexBasis: '100%', maxHeight: '120px', overflow: 'auto', padding: '6px 8px', borderRadius: '8px', border: '1px solid var(--dsw-alias-state-error-primary)', color: 'var(--dsw-alias-state-error-primary)', fontSize: '11px', lineHeight: 1.6, whiteSpace: 'pre-wrap' },
+progress: { fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' },
+mask: { position: 'fixed', inset: 0, zIndex: 4090, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, 0.42))', pointerEvents: 'auto' },
+confirmCard: { width: 'min(560px, 92vw)', maxHeight: '84vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', padding: '18px', borderRadius: '12px', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', boxShadow: '0 12px 40px var(--dsw-alias-bg-overlay, rgba(0, 0, 0, 0.28))' },
+confirmTitle: { margin: 0, fontSize: '16px', fontWeight: 600 }, confirmText: { margin: 0, fontSize: '13px', lineHeight: 1.7, color: 'var(--dsw-alias-label-secondary)', whiteSpace: 'pre-wrap' },
+confirmWarning: { margin: 0, fontSize: '13px', lineHeight: 1.7, color: 'var(--dsw-alias-state-error-primary)', fontWeight: 500 },
+confirmFooter: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }, }
 /** 批量管理图标（清单 + 勾）。 */
 function BatchIcon({ size = 14 }) { return h('svg', { width: size, height: size, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor',
 strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true', }, h('path', { d: 'M2.5 4h7M2.5 8h7M2.5 12h4' }), h('path', { d: 'M11 10.5l1.6 1.6 2.4-2.6' }), )
@@ -423,14 +486,16 @@ function BatchHeaderMount({ t }) { const state = useBatch()
 const [container, setContainer] = useState(null)
 useEffect(() => { let active = true
 let host = null
+let failed = false
 let timer = null
+const probes = new Set()
 const findHeader = () => { const nodes = Array.from(document.querySelectorAll('[class*="_sectionHeader"]'))
 for (const node of nodes) { const text = node.textContent ?? ''
 if (text.includes('工作区') || text.includes('Workspaces')) return node
 }
 return undefined
 }
-const attach = () => { if (!active) return
+const attach = () => { if (!active || failed) return
 if (host !== null && host.isConnected) return
 const header = findHeader()
 if (header === undefined) return
@@ -440,9 +505,27 @@ host.style.cssText = 'display:inline-flex;align-items:center;flex:none;margin-le
 header.appendChild(host)
 setContainer(host)
 batchStore.setHeaderStatus('mounted')
+const probe = setTimeout(() => { if (!active || host === null) return
+const button = host.firstElementChild
+if (button === null) return
+const rect = button.getBoundingClientRect()
+const headerRect = header.getBoundingClientRect()
+if (rect.width < 2 || rect.right <= 0 || rect.left >= headerRect.right - 1) { failed = true
+host.remove()
+host = null
+setContainer(null)
+batchStore.setHeaderStatus('failed')
+}
+}, 300)
+probes.add(probe)
+}
+const retry = () => { if (!active || !failed) return
+failed = false
+batchStore.setHeaderStatus('pending')
+attach()
 }
 attach()
-timer = setTimeout(() => { if (active && host === null) batchStore.setHeaderStatus('failed') }, 3000)
+timer = setTimeout(() => { if (active && host === null && !failed) batchStore.setHeaderStatus('failed') }, 3000)
 const observer = new MutationObserver(() => { if (!active) return
 if (host !== null && host.isConnected) return
 host = null
@@ -450,9 +533,12 @@ setContainer(null)
 attach()
 })
 observer.observe(document.body, { childList: true, subtree: true })
+window.addEventListener('resize', retry)
 return () => { active = false
 clearTimeout(timer)
+for (const probe of probes) clearTimeout(probe)
 observer.disconnect()
+window.removeEventListener('resize', retry)
 if (host !== null) host.remove()
 }
 }, [])
@@ -464,12 +550,11 @@ style: state.mode ? { ...batchStyles.trigger, ...batchStyles.triggerActive } : b
 function BatchFooterFallback({ t }) { const state = useBatch()
 if (state.headerStatus !== 'failed') return null
 return h('button', { type: 'button', title: state.mode ? t('batch.exit') : t('batch.open'), style: batchStyles.footerAction, onClick: () => batchStore.setMode(!state.mode),
-}, h(BatchIcon, { size: 14 }), h('span', null, state.mode ? t('batch.exit') : t('batch.open')))
+}, h(BatchIcon, { size: 14 }), h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis' } }, state.mode ? t('batch.exit') : t('batch.open')))
 }
 /**
-* 会话行前面的勾选框：直接注入到官方会话行 DOM（`data-row-key="session:<id>"`）最前面。
-* 官方 leading 插槽只在空闲行挂载、且会被状态点占用，无法覆盖全部行；这里用 MutationObserver
-* 跟随行节点重建自动补挂，退出多选时整体清理。
+* 会话行前面的勾选框：注入官方会话行 DOM（`data-row-key="session:<id>"`）最前面。
+* MutationObserver + 400ms 轮询补挂；多选模式下点击整行也切换勾选（不打开会话）。
 */
 function BatchRowInjector({ t }) { const state = useBatch()
 const inputsRef = useRef(new Map())
@@ -486,7 +571,17 @@ inputsRef.current.delete(sessionId)
 }
 for (const row of document.querySelectorAll('[data-row-key^="session:"]')) { const key = row.getAttribute('data-row-key') ?? ''
 const sessionId = key.slice('session:'.length)
-if (sessionId === '' || inputsRef.current.has(sessionId)) continue
+if (sessionId === '') continue
+if (row.dataset.dshSessionDeleteRow !== '1') { row.dataset.dshSessionDeleteRow = '1'
+row.addEventListener('click', event => { if (!batchStore.getSnapshot().mode) return
+const target = event.target
+if (target instanceof Element && target.closest('[data-dsh-session-delete-select],button,a,input,[role="menuitem"],[contenteditable="true"]')) return
+event.preventDefault()
+event.stopPropagation()
+batchStore.toggle(sessionId)
+}, true)
+}
+if (inputsRef.current.has(sessionId)) continue
 const host = document.createElement('span')
 host.dataset.dshSessionDeleteSelect = sessionId
 host.style.cssText = 'display:inline-flex;align-items:center;flex:none;margin-right:6px'
@@ -524,62 +619,112 @@ for (const [sessionId, entry] of inputsRef.current) entry.input.checked = state.
 }, [state])
 return null
 }
-/** 底部浮动操作栏：全选/清空/先停/批量移入回收站/彻底删除/退出。 */
+/** 批量操作确认弹窗：列数量/大小/工作区/运行中/归档/子代理，必须显式确认。 */
+function BatchConfirmDialog({ ctx, t, mode, selected, stopFirst, busy, metaMap, onCancel, onConfirm }) { const stats = { size: 0, running: 0, archived: 0, subagents: 0, workspaces: new Map() }
+for (const id of selected) { const meta = metaMap?.get(id)
+if (meta === undefined) continue
+stats.size += Number(meta.sizeBytes) || 0
+if (meta.running === true) stats.running += 1
+if (meta.archived === true) stats.archived += 1
+if ((Number(meta.subagentCount) || 0) > 0) stats.subagents += 1
+const name = meta.workspace?.title || meta.workspace?.path || t('batch.unGroupedTitle')
+stats.workspaces.set(name, (stats.workspaces.get(name) ?? 0) + 1)
+}
+const workspaceText = [...stats.workspaces.entries()]
+.map(([name, count]) => `${name}×${count}`)
+.join('、')
+const purge = mode === 'purge'
+return h('div', { style: batchStyles.mask, role: 'presentation', onMouseDown: event => { if (event.target === event.currentTarget && !busy) onCancel() }, }, h('div', { role: 'dialog', 'aria-modal': 'true',
+'aria-label': purge ? t('batch.confirm.purgeTitle') : t('batch.confirm.trashTitle'), style: batchStyles.confirmCard, },
+h('h2', { style: batchStyles.confirmTitle }, purge ? t('batch.confirm.purgeTitle') : t('batch.confirm.trashTitle')),
+h('p', { style: batchStyles.confirmText }, t('batch.confirm.summary', { n: selected.length, size: formatBytes(stats.size) })),
+stats.workspaces.size > 0 ? h('p', { style: batchStyles.confirmText }, t('batch.confirm.workspaces', { list: workspaceText })) : null,
+(stats.running + stats.archived + stats.subagents) > 0 ? h('p', { style: batchStyles.confirmText }, t('batch.confirm.breakdown', { running: stats.running, archived: stats.archived, subagents: stats.subagents })) : null,
+h('p', { style: batchStyles.confirmText }, stopFirst ? t('batch.confirm.stopOn') : t('batch.confirm.stopOff')),
+h('p', { style: purge ? batchStyles.confirmWarning : batchStyles.confirmText }, purge ? t('batch.confirm.purgeWarning') : t('batch.confirm.trashNote')), h('div', { style: batchStyles.confirmFooter },
+h('button', { type: 'button', style: batchStyles.button, disabled: busy, onClick: onCancel }, t('batch.confirm.cancel')), h('button', { type: 'button',
+style: busy ? { ...(purge ? batchStyles.danger : batchStyles.primary), ...batchStyles.disabled } : (purge ? batchStyles.danger : batchStyles.primary), disabled: busy, onClick: onConfirm,
+}, purge ? t('batch.confirm.purgeConfirm') : t('batch.confirm.trashConfirm')), ), ))
+}
+/** 底部浮动操作栏：全选可见/清空/先停/确认后批量移入回收站或彻底删除/退出。 */
 function BatchToolbar({ ctx, t }) { const state = useBatch()
 const [busy, setBusy] = useState(false)
 const [stopFirst, setStopFirst] = useState(false)
-const [armed, setArmed] = useState(false)
+const [confirmMode, setConfirmMode] = useState(null)
 const [result, setResult] = useState(null)
+const [metaMap, setMetaMap] = useState(null)
+const busyRef = useRef(false)
 useEffect(() => { if (!state.mode) return
-const onKeyDown = event => { if (event.key === 'Escape' && !busy) batchStore.setMode(false)
+const onKeyDown = event => { if (event.key !== 'Escape' || busyRef.current) return
+if (confirmMode !== null) { setConfirmMode(null); return }
+if (document.querySelector('[role="dialog"]') !== null) return
+batchStore.setMode(false)
 }
 window.addEventListener('keydown', onKeyDown)
 return () => window.removeEventListener('keydown', onKeyDown)
-}, [state.mode, busy])
+}, [state.mode, confirmMode])
 if (!state.mode) return null
 const selectedCount = state.selected.size
 const fail = text => noticeStore.show({ kind: 'error', text })
-const run = async (mode) => { if (busy || selectedCount === 0) return
+const run = async mode => { if (busyRef.current || state.selected.size === 0) return
+busyRef.current = true
 setBusy(true)
 setResult(null)
-setArmed(false)
-try { const payload = await apiPost('/batch-delete', { sessionIds: [...state.selected], mode, stopIfRunning: stopFirst, })
+try { const ids = [...state.selected]
+const payload = await apiPost('/batch-delete', { sessionIds: ids, mode, stopIfRunning: stopFirst })
 if (payload?.ok !== true) { fail(errorText(payload, t('batch.loadFailed', { detail: '未知错误' })))
 return
 }
 setResult(payload)
-const failed = payload.summary?.failed ?? 0
-noticeStore.show({ kind: failed > 0 ? 'warn' : 'ok', text: t('batch.summary', { ok: payload.summary?.succeeded ?? 0, fail: failed }), sticky: failed > 0, })
+const failedItems = (payload.results ?? []).filter(item => item.ok !== true)
+const failed = payload.summary?.failed ?? failedItems.length
+noticeStore.show({ kind: failed > 0 ? 'warn' : 'ok',
+text: failed > 0 ? `${t('batch.summary', { ok: payload.summary?.succeeded ?? 0, fail: failed })}；${t('batch.failedKept')}` : t('batch.summary', { ok: payload.summary?.succeeded ?? 0, fail: 0 }), sticky: failed > 0, })
 const deleted = (payload.results ?? []).filter(item => item.ok).map(item => item.sessionId)
 refreshSessionList(ctx)
 for (const id of deleted) clearMainIfCurrent(ctx, id)
-batchStore.clear()
-if (failed === 0) batchStore.setMode(false)
+if (failed === 0) { batchStore.clear()
+batchStore.setMode(false)
+} else { batchStore.select(failedItems.map(item => item.sessionId))
+}
 } catch (error) { fail(errorText(error, t('batch.loadFailed', { detail: '未知错误' })))
-} finally { setBusy(false)
+} finally { busyRef.current = false
+setBusy(false)
 }
 }
-const selectAll = async () => { try { const payload = await apiGet('/sessions')
-if (payload?.ok !== true) { fail(errorText(payload, t('batch.loadFailed', { detail: '未知错误' })))
-return
+const openConfirm = async mode => { if (busyRef.current || state.selected.size === 0) return
+setConfirmMode(mode)
+if (metaMap !== null) return
+try { const payload = await apiGet('/sessions')
+if (payload?.ok === true && Array.isArray(payload.sessions)) { setMetaMap(new Map(payload.sessions.map(session => [session.sessionId, session])))
 }
-batchStore.select((payload.sessions ?? []).map(session => session.sessionId))
-} catch (error) { fail(t('batch.hostUnavailable'))
+} catch {
+/* 拿不到元数据时确认框只显示数量，不影响删除 */
 }
+}
+const selectAllVisible = () => { const ids = visibleSessionIds()
+if (ids.length === 0) return
+batchStore.select(ids.slice(0, MAX_SELECT))
+if (ids.length > MAX_SELECT) noticeStore.show({ kind: 'warn', text: t('batch.selectAllCapped'), sticky: true })
 }
 const failures = (result?.results ?? []).filter(item => item.ok !== true)
 const disabled = busy || selectedCount === 0
-return h('div', { style: batchStyles.bar, role: 'region', 'aria-label': t('batch.title') }, h('span', { style: batchStyles.count }, t('batch.selected', { n: selectedCount })),
-h('button', { type: 'button', style: batchStyles.button, disabled: busy, onClick: () => void selectAll() }, t('batch.selectAll')),
+const titleOf = id => metaMap?.get(id)?.title || rowTitleOf(id) || shortId(id)
+const bar = h('div', { style: batchStyles.bar, role: 'region', 'aria-label': t('batch.title') }, h('span', { style: batchStyles.count }, t('batch.selected', { n: selectedCount })),
+h('button', { type: 'button', style: batchStyles.button, disabled: busy, onClick: selectAllVisible }, t('batch.selectAllVisible')),
 h('button', { type: 'button', style: batchStyles.button, disabled: busy, onClick: () => batchStore.clear() }, t('batch.clear')), h('label', { style: batchStyles.checkboxRow },
 h('input', { type: 'checkbox', checked: stopFirst, disabled: busy, onChange: event => setStopFirst(event.target.checked) }), h('span', null, t('batch.stop')), ),
 busy ? h('span', { style: batchStyles.progress }, t('batch.working', { total: selectedCount })) : null, h('button', { type: 'button',
-style: disabled ? { ...batchStyles.primary, ...batchStyles.disabled } : batchStyles.primary, disabled, onClick: () => void run('trash'), }, t('batch.trash')), h('button', { type: 'button',
-style: disabled ? { ...batchStyles.danger, ...batchStyles.disabled } : batchStyles.danger, disabled, onClick: () => { if (!armed) { setArmed(true); return }
-void run('purge')
-}, onBlur: () => setArmed(false), }, armed ? t('batch.purgeConfirm') : t('batch.purge')),
+style: disabled ? { ...batchStyles.primary, ...batchStyles.disabled } : batchStyles.primary, disabled, onClick: () => void openConfirm('trash'), }, t('batch.trash')), h('button', { type: 'button',
+style: disabled ? { ...batchStyles.danger, ...batchStyles.disabled } : batchStyles.danger, disabled, onClick: () => void openConfirm('purge'), }, t('batch.purge')),
 h('button', { type: 'button', style: batchStyles.button, disabled: busy, onClick: () => batchStore.setMode(false) }, t('batch.exit')), failures.length > 0 ? h('div', { style: batchStyles.failures },
-`${t('batch.failures')}：\n` + failures.map(item => `${item.sessionId}：${item.message ?? item.code}`).join('\n'), ) : null, )
+`${t('batch.failures')}\n` + failures.map(item => t('batch.failureLine', { title: titleOf(item.sessionId), id: shortId(item.sessionId), detail: item.detail || item.message || item.code, })).join('\n'), ) : null, )
+return h(React.Fragment, null, bar, confirmMode === null ? null : h(BatchConfirmDialog, { ctx, t, mode: confirmMode, selected: [...state.selected], stopFirst, busy, metaMap,
+onCancel: () => { if (!busy) setConfirmMode(null) }, onConfirm: () => { if (busyRef.current) return
+const mode = confirmMode
+setConfirmMode(null)
+void run(mode)
+}, }), )
 }
 return { inject: ['slots', 'locale', 'sessions', 'uiWorkspace'], apply(ctx) { ctx.effect(() => ctx.locale.register(NS, { zh: TEXT, en }), 'session-delete: 词典')
 const t = ctx.locale.bind(NS)

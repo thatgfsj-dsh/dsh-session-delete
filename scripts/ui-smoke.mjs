@@ -23,6 +23,7 @@ const DSH = process.env.DSH_CLI ?? 'dsh'
 const CHROME = process.env.CHROME ?? ['google-chrome', 'google-chrome-stable', 'chromium'].map(name => `/usr/bin/${name}`).find(path => existsSync(path))
 const SHOT = '/tmp/dsh-session-delete-batch-ui.png'
 const SHOT_AFTER = '/tmp/dsh-session-delete-after-delete.png'
+const SHOT_CONFIRM = '/tmp/dsh-session-delete-batch-confirm.png'
 
 const failures = []
 const check = (name, ok, detail = '') => {
@@ -216,6 +217,29 @@ try {
   check('已选计数更新', String(barText).includes('已选 1 个'), String(barText).slice(0, 80))
   check('批量按钮齐全', ['移入回收站', '彻底删除', '退出批量', '全选', '清空选择'].every(label => String(barText).includes(label)))
 
+  // 全选只覆盖当前可见行：点击“全选可见”后已选数量应等于可见勾选框数量。
+  const visibleCount = await evaluate(page, 'document.querySelectorAll("input[type=checkbox][aria-label=选择此会话]").length')
+  await evaluate(page, `(() => {
+    const bar = document.querySelector('[role=region][aria-label=批量管理]')
+    const button = [...bar.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '全选可见')
+    if (button !== undefined) button.click()
+  })()`)
+  await sleep(300)
+  const selectedAfterAll = await evaluate(page, `(() => {
+    const text = document.querySelector('[role=region][aria-label=批量管理]').textContent
+    const rest = text.split('已选 ')[1]
+    return rest === undefined ? -1 : Number.parseInt(rest, 10)
+  })()`)
+  check('全选可见只选当前可见行', selectedAfterAll === Number(visibleCount), `可见 ${visibleCount}，已选 ${selectedAfterAll}`)
+  await evaluate(page, `(() => {
+    const bar = document.querySelector('[role=region][aria-label=批量管理]')
+    const button = [...bar.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '清空选择')
+    if (button !== undefined) button.click()
+  })()`)
+  await sleep(200)
+  await evaluate(page, 'document.querySelector("input[type=checkbox][aria-label=选择此会话]").click()')
+  await sleep(300)
+
   // 临时 HOME 没有凭据，会弹「开始使用」引导层；截屏前关掉它。
   const dismissedOnboarding = await evaluate(page, `(() => {
     const candidates = [...document.querySelectorAll('[role="dialog"], [class*="_dialog"], body *')]
@@ -238,7 +262,7 @@ try {
     console.log(`截图：${SHOT}`)
   }
 
-  // 真实执行一次「移入回收站」，验证删除后列表及时刷新（残留行消失，避免点开 404）。
+  // 真实执行一次「移入回收站」：先弹确认框，再确认删除；验证删除后列表及时刷新、toast 可见。
   const selectedId = await evaluate(page, 'document.querySelector("[data-dsh-session-delete-select]")?.getAttribute("data-dsh-session-delete-select") ?? null')
   check('取到勾选会话的 ID', typeof selectedId === 'string' && selectedId !== '', String(selectedId))
   const clicked = await evaluate(page, `(() => {
@@ -249,6 +273,26 @@ try {
     return true
   })()`)
   check('点击批量移入回收站', clicked === true)
+  const dialogText = await waitFor('批量确认框出现', async () => {
+    const text = await evaluate(page, `document.querySelector("[role=dialog][aria-label='确认移入回收站？']")?.textContent ?? null`)
+    return text === null ? undefined : text
+  }, 3000).catch(() => null)
+  check('批量操作弹出确认框', dialogText !== null)
+  check('确认框显示数量与大小', dialogText !== null && /将处理 1 个会话/.test(dialogText) && /合计/.test(dialogText), String(dialogText).slice(0, 120))
+  const shotConfirm = await page.send('Page.captureScreenshot', { format: 'png' })
+  if (shotConfirm.result?.data !== undefined) {
+    const { writeFile } = await import('node:fs/promises')
+    await writeFile(SHOT_CONFIRM, Buffer.from(shotConfirm.result.data, 'base64'))
+    console.log(`截图：${SHOT_CONFIRM}`)
+  }
+  const confirmed = await evaluate(page, `(() => {
+    const dialog = document.querySelector('[role=dialog][aria-label="确认移入回收站？"]')
+    const button = dialog === null ? undefined : [...dialog.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '确认移入回收站')
+    if (button === undefined) return false
+    button.click()
+    return true
+  })()`)
+  check('确认执行批量移入回收站', confirmed === true)
   const rowGone = await waitFor('删除后侧栏行消失', async () => {
     const present = await evaluate(page, `document.querySelector('[data-row-key="session:${selectedId}"]') !== null`)
     return present === false
@@ -256,6 +300,16 @@ try {
   check('删除后侧栏行及时消失', rowGone === true, `残留行 session:${selectedId}`)
   const toolbarGone = await evaluate(page, 'document.querySelector("[role=region][aria-label=批量管理]") === null')
   check('批量成功后退出多选模式', toolbarGone === true)
+
+  // Toast 必须完整落在视口内（红队发现曾被 CSS 裁到左上角）。
+  await sleep(400)
+  const noticeRect = await evaluate(page, `(() => {
+    const node = document.querySelector('[role=status]')
+    if (node === null) return null
+    const rect = node.getBoundingClientRect()
+    return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, w: rect.width, h: rect.height, iw: window.innerWidth, ih: window.innerHeight }
+  })()`)
+  check('删除反馈 toast 可见', noticeRect !== null && noticeRect.w > 0 && noticeRect.h > 0 && noticeRect.x >= 0 && noticeRect.y >= 0 && noticeRect.right <= noticeRect.iw + 1 && noticeRect.bottom <= noticeRect.ih + 1, JSON.stringify(noticeRect))
 
   await sleep(300)
   const shotAfter = await page.send('Page.captureScreenshot', { format: 'png' })

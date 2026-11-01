@@ -63,7 +63,7 @@ function makeRegistry(entity, options = {}) {
 const ROOT = 'session-aaaaaaaa-1111-2222-3333-444444444444'
 const CHILD = 'session-bbbbbbbb-1111-2222-3333-444444444444'
 
-test('回收站模式：搬目录 → 摘活体 → 清记账 → 清投影缓存 → 广播', async () => {
+test('回收站模式：搬目录 → 摘活体 → 清记账 → 保留投影缓存 → 广播', async () => {
   await withHome(async home => {
     const dir = await makeDir(home, ROOT, 12)
     const cacheFile = await makeProjCache(home, ROOT)
@@ -81,13 +81,14 @@ test('回收站模式：搬目录 → 摘活体 → 清记账 → 清投影缓�
     assert.equal(result.ok, true)
     assert.equal(result.mode, 'trash')
     assert.equal(existsSync(dir), false)
-    assert.equal(existsSync(cacheFile), false)
+    // 移入回收站保留投影缓存，还原后侧栏标题不丢；彻底删除时才清。
+    assert.equal(existsSync(cacheFile), true)
     assert.deepEqual(fake.detaches, [ROOT])
     assert.deepEqual(workspaceCalls.detach, [ROOT])
     assert.deepEqual(registry.calls.unarchive, [ROOT])
     assert.deepEqual(registry.calls.unpin, [ROOT])
     assert.ok(fake.emitted.some(item => item.name === 'api-session/removed' && item.payload === ROOT))
-    assert.equal(fake.calls.domainDelete.includes(ROOT), true)
+    assert.equal(fake.calls.domainDelete.includes(ROOT), false)
     const entries = await listEntries()
     assert.equal(entries.length, 1)
     assert.equal(entries[0].title, '测试会话')
@@ -97,6 +98,26 @@ test('回收站模式：搬目录 → 摘活体 → 清记账 → 清投影缓�
     // 回收站里确实有日志副本
     const payload = join(entries[0].dir, 'payload', '0')
     assert.equal((await readFile(join(payload, 'session.v4.jsonl.zstd'), 'utf8')).length, 12)
+  })
+})
+
+test('彻底删除回收站条目：清掉投影缓存', async () => {
+  await withHome(async home => {
+    const dir = await makeDir(home, ROOT, 12)
+    const cacheFile = await makeProjCache(home, ROOT)
+    const fake = makeFakeCtx({
+      home,
+      sessions: [{ id: ROOT, header: { id: ROOT, cwd: '/proj' } }],
+      snapshots: [{ header: { id: ROOT, cwd: '/proj' }, sizeBytes: 12 }],
+      projections: { stateOf: () => '测试会话' },
+    })
+    await executeDelete(fake.ctx, { sessionId: ROOT, mode: 'trash', title: '测试会话' })
+    assert.equal(existsSync(cacheFile), true)
+    const purged = await executePurgeTrashEntry(fake.ctx, ROOT)
+    assert.equal(purged.ok, true)
+    assert.equal(existsSync(cacheFile), false)
+    assert.equal(fake.calls.domainDelete.includes(ROOT), true)
+    assert.equal(existsSync(dir), false)
   })
 })
 
