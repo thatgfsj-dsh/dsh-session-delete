@@ -19,7 +19,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { copyFile, cp, mkdtemp, readdir, readlink, rm, symlink, mkdir } from 'node:fs/promises'
+import { copyFile, cp, mkdtemp, readdir, readlink, rm, symlink, mkdir, writeFile } from 'node:fs/promises'
 import { existsSync, statSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -129,6 +129,8 @@ async function copySampleSessions(limit) {
       const targetDir = join(tempHome, 'sessions', project.name, session.name)
       await mkdir(targetDir, { recursive: true })
       for (const log of logs) await copyFile(join(sourceDir, log), join(targetDir, log))
+      // 官方写锁文件也一起造出来，验证删除不会把它带进回收站。
+      await writeFile(join(targetDir, 'session.lock'), '', 'utf8')
       copied.push({ projectKey: project.name, dirName: session.name, targetDir })
     }
   }
@@ -239,18 +241,31 @@ try {
   const badId = await api(origin, `/inspect?sessionId=${encodeURIComponent('../etc/passwd')}`)
   check('拒绝路径穿越的会话 ID', badId.status === 400 && String(badId.payload?.code ?? '').includes('非法'), JSON.stringify(badId.payload))
 
+  // 造一个投影缓存分片：删除后必须清掉，否则插件面板会显示一个「还在、但点不开」的幽灵会话。
+  const projCacheFile = join(tempHome, 'storages', 'session_projcache', 'sessions', `${sessionId}.json`)
+  await mkdir(dirname(projCacheFile), { recursive: true })
+  await writeFile(projCacheFile, '{}', 'utf8')
+
   const deleted = await api(origin, '/delete', { method: 'POST', body: { sessionId, mode: 'trash' } })
   check('移入回收站成功', deleted.payload.ok === true, JSON.stringify(deleted.payload).slice(0, 160))
   check('会话目录已离开 sessions', !existsSync(sample.targetDir), sample.targetDir)
+  check('投影缓存已清（不留幽灵会话）', !existsSync(projCacheFile), projCacheFile)
+  await sleep(400)
+  check('删除后原位没有残骸目录', !existsSync(sample.targetDir), sample.targetDir)
 
   const trash1 = await api(origin, '/trash')
   const entry = (trash1.payload.entries ?? []).find(item => item.sessionId === sessionId)
   check('回收站里有该会话', entry !== undefined, `共 ${trash1.payload.entries?.length ?? 0} 条`)
   check('回收站条目带元数据', entry !== undefined && Number(entry.sizeBytes) >= 0 && typeof entry.deletedAt === 'string', JSON.stringify(entry ?? {}).slice(0, 160))
+  if (entry !== undefined) {
+    const payloadDir = join(tempHome, 'session-delete', 'trash', entry.trashId, 'payload', '0')
+    check('回收站不保存旧锁文件', !existsSync(join(payloadDir, 'session.lock')), payloadDir)
+  }
 
   const restored = await api(origin, '/restore', { method: 'POST', body: { sessionId } })
   check('还原成功', restored.payload.ok === true, JSON.stringify(restored.payload).slice(0, 160))
   check('会话目录已回到 sessions', existsSync(sample.targetDir), sample.targetDir)
+  check('还原不把旧锁文件带回来', !existsSync(join(sample.targetDir, 'session.lock')), sample.targetDir)
   const trash2 = await api(origin, '/trash')
   check('回收站已清空该条目', (trash2.payload.entries ?? []).length === 0)
 

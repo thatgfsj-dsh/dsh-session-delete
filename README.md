@@ -122,9 +122,14 @@ dsh plugin --profile web remove dsh-session-delete
 | 工作区记账 | `workspace.json` 的 `sessionIds` | 从各工作区摘除 |
 | 归档集合 | `workspace.json` 的 `archivedSessionIds` | 取消归档 |
 | 置顶集合 | `workspace.json` 的 `pinnedSessionIds` | 取消置顶 |
-| 投影缓存 | `storages/session_projcache/sessions/<ID>.json` + 域记录 | 域记录与分片一起删（兼容两种命名） |
+| 投影缓存 | `storages/session_projcache/sessions/<ID>.json` + 域记录 | 域记录与分片一起删（回收站/彻底删除两种模式都清，不留幽灵会话） |
+| 写锁文件 | 会话目录里的 `session.lock` | **不搬进回收站**；还原旧条目时也会 unlink，旧锁不会被带回原位 |
 | 子代理会话 | 独立日志与 Session | 默认整树删除 |
 
+**执行顺序**：刷盘 → 摘活体（触发官方 `session/disposed`）→ 等持久化写句柄释放（有界）→ 搬目录/删盘 → 清工作区记账与投影缓存 → 复检原位残骸。
+反过来（先搬目录后摘活体）的话，异步的持久化 `close()` 会按原路径把日志写回原位，留下没有头部的残骸目录或旧锁，插件随后「重开会话」就会卡住，直到重启宿主。
+
+> 回收站列表里的标题来自 `trash/<id>/metadata.json`；还原后的标题由日志投影重新计算，不依赖旧缓存。
 > 本期**不**清理内容寻址附件与会话产出的工作区文件（误删风险高，留待后续版本）。
 
 ### 数据目录

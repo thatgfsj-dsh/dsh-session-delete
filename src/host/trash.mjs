@@ -204,7 +204,12 @@ export async function moveIntoTrash(input) {
   try {
     for (const [index, member] of members.entries()) {
       const payload = String(index)
-      await moveTree(member.dirPath, join(payloadRoot, payload))
+      const target = join(payloadRoot, payload)
+      await moveTree(member.dirPath, target)
+      // 锁文件不进回收站：官方 POSIX 锁是 flock 绑定 inode、Windows 是同名内核信号量，
+      // 把 session.lock 一起搬走/还原等于把旧锁带回原位，重开会话时可能撞上它。
+      // 官方明确「删除活会话的锁文件是安全的」：持有者会校验 inode/路径并重建。
+      await rm(join(target, 'session.lock'), { force: true }).catch(() => {})
       moved.push({ ...member, payload })
     }
     const meta = {
@@ -267,6 +272,8 @@ export async function restoreEntry(entry) {
   try {
     for (const member of entry.members) {
       await moveTree(join(entry.dir, 'payload', member.payload), member.originalPath)
+      // 兼容旧版本回收站条目：它们可能把 session.lock 一起搬走了，还原时不要再带回旧锁。
+      await rm(join(member.originalPath, 'session.lock'), { force: true }).catch(() => {})
       done.push(member)
     }
   } catch (error) {
