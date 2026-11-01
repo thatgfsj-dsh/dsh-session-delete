@@ -4,7 +4,7 @@
  */
 import { unlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { idVariants, projCacheDir } from './paths.mjs'
+import { projCacheDir } from './paths.mjs'
 
 /**
  * 把活体会话的缓冲事件刷到磁盘，让随后的目录搬移搬走完整日志。
@@ -102,7 +102,7 @@ export async function cleanWorkspaceRecords(ctx, sessionId) {
 export async function cleanProjectionCache(ctx, sessionId) {
   const steps = []
   const leftovers = []
-  const variants = idVariants(sessionId)
+  const variants = [sessionId]
   const facility = ctx.get('storageDomain')
   const domain = typeof facility?.get === 'function' ? facility.get('session_projcache') : undefined
   if (domain !== undefined && typeof domain.table === 'function') {

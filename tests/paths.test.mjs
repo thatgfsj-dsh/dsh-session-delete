@@ -14,9 +14,9 @@ test('idVariants：两种历史命名都要覆盖', () => {
   if (process.platform !== 'win32') assert.deepEqual(idVariants('session-a.b_c:d'), ['session-a.b_c:d', 'a.b_c:d'])
 })
 
-test('assertSessionId：拒绝空、超长、路径穿越与非法字符', () => {
-  assert.equal(assertSessionId(' session-1 '), 'session-1')
-  for (const bad of ['', '   ', '../etc', 'a/b', 'a\\b', '.', '..', 'x'.repeat(201), 'a b']) {
+test('assertSessionId：拒绝空、超长、路径穿越与非法字符（不做 trim 归一化）', () => {
+  assert.equal(assertSessionId('session-1'), 'session-1')
+  for (const bad of ['', '   ', ' session-1 ', '../etc', 'a/b', 'a\\b', '.', '..', 'x'.repeat(201), 'a b']) {
     assert.throws(() => assertSessionId(bad), /会话 ID/, `应当拒绝：${bad}`)
   }
 })

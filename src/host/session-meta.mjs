@@ -5,7 +5,7 @@
 import { readdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { exists, readJsonSafe, sizeOf, statSafe } from './fs-util.mjs'
-import { idVariants, predictedSessionDir, projCacheDir, sessionsRoot } from './paths.mjs'
+import { encodeSegment, idVariants, predictedSessionDir, projCacheDir, sessionsRoot } from './paths.mjs'
 
 /**
  * 读取全部持久化会话快照，按 id 建索引；持久化服务不可用时退回活体会话。
@@ -112,21 +112,18 @@ export async function resolveSessionDir(ctx, header) {
       /* 定位失败时继续走扫描 */
     }
   }
-  const variants = idVariants(header.id).map(name => ({ raw: name }))
+  // 破坏性路径只认精确 ID：不再用 bare/prefix 变体去猜目录（两个仅差前缀的 ID 可以共存）。
+  const encoded = encodeSegment(header.id)
   const candidates = []
-  if (typeof header.cwd === 'string' && header.cwd !== '') {
-    for (const variant of variants) candidates.push(predictedSessionDir(variant.raw, header.cwd))
-  }
-  for (const variant of variants) candidates.push(predictedSessionDir(variant.raw, undefined))
+  if (typeof header.cwd === 'string' && header.cwd !== '') candidates.push(predictedSessionDir(header.id, header.cwd))
+  candidates.push(predictedSessionDir(header.id, undefined))
   let projectDirs = []
   try {
     projectDirs = (await readdir(sessionsRoot(), { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name)
   } catch {
     projectDirs = []
   }
-  for (const project of projectDirs) {
-    for (const variant of variants) candidates.push(join(sessionsRoot(), project, variant.raw))
-  }
+  for (const project of projectDirs) candidates.push(join(sessionsRoot(), project, encoded))
   for (const candidate of candidates) {
     const info = await statSafe(candidate)
     if (info?.isDirectory() === true) return candidate
@@ -237,7 +234,7 @@ export async function collectSessionMeta(ctx, sessionId, options = {}) {
   const running = isRunning(ctx, sessionId, activity)
   const title = await resolveTitle(ctx, sessionId, options.title)
   const workspace = resolveWorkspace(ctx, sessionId)
-  const dir = await resolveSessionDir(ctx, header)
+  const dir = await resolveSessionDir(ctx, header ?? { id: sessionId })
   const sizeBytes = dir === undefined ? 0 : await sizeOf(dir)
   const members = []
   if (dir !== undefined) {
@@ -246,7 +243,7 @@ export async function collectSessionMeta(ctx, sessionId, options = {}) {
   const descendantsMeta = []
   for (const childId of descendants) {
     const childHeader = resolveHeader(ctx, childId, index)
-    const childDir = await resolveSessionDir(ctx, childHeader)
+    const childDir = await resolveSessionDir(ctx, childHeader ?? { id: childId })
     const childSize = childDir === undefined ? 0 : await sizeOf(childDir)
     const childTitle = await resolveTitle(ctx, childId, '')
     const childRunning = isRunning(ctx, childId, await collectActivity(ctx, childId))

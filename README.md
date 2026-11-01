@@ -123,11 +123,20 @@ dsh plugin --profile web remove dsh-session-delete
 | 归档集合 | `workspace.json` 的 `archivedSessionIds` | 取消归档 |
 | 置顶集合 | `workspace.json` 的 `pinnedSessionIds` | 取消置顶 |
 | 投影缓存 | `storages/session_projcache/sessions/<ID>.json` + 域记录 | 域记录与分片一起删（回收站/彻底删除两种模式都清，不留幽灵会话） |
-| 写锁文件 | 会话目录里的 `session.lock` | **不搬进回收站**；还原旧条目时也会 unlink，旧锁不会被带回原位 |
+| 写锁文件 | 会话目录里的 `session.lock` | **不搬进回收站**；还原旧条目时也会 unlink。仅 POSIX 有锁文件；Windows 锁是内核信号量，unlink 是无害空操作 |
 | 子代理会话 | 独立日志与 Session | 默认整树删除 |
 
-**执行顺序**：刷盘 → 摘活体（触发官方 `session/disposed`）→ 等持久化写句柄释放（有界）→ 搬目录/删盘 → 清工作区记账与投影缓存 → 复检原位残骸。
+**执行顺序**：刷盘 → 摘活体（触发官方 `session/disposed`）→ 短等待持久化 close → 搬目录/删盘 → 清工作区记账与投影缓存 → 立即复检原位残骸 →（活体删除时）后台再补检 300/900/1800ms。
 反过来（先搬目录后摘活体）的话，异步的持久化 `close()` 会按原路径把日志写回原位，留下没有头部的残骸目录或旧锁，插件随后「重开会话」就会卡住，直到重启宿主。
+
+**安全规则（v0.1.8，红蓝对抗后）**：
+
+- **精确 ID**：删除/还原/彻底删除只认请求里的精确会话 ID（目录名 = `encodeSegment(id)`），不再用 `session-` 前缀/裸 UUID 互相猜测；header 里的 id 与请求不一致直接拒绝。`/inspect` 仍允许别名方便排查。
+- **残骸复检 fail-closed**：只有 `sessionPersistence.list()` 成功且确认该 id 不是合法会话时才删原位残骸；列表不可用/抛错时保留并告警，绝不盲删。
+- **回滚不丢数据**：移入回收站/还原的回滚失败时保留回收站条目（`partial` 标记，设置页显示「不完整」且禁用还原），不会删掉唯一副本。
+- **flush 后重新解析目录**：空白会话/未落盘的子代理在 flush 时落盘，也会被正常删除，不会误报 already-gone。
+- **失败语义**：还原支持「上次中断后续做」（已回原位的成员跳过）；彻底删除先删 payload 再删 metadata，部分失败时条目仍可见可重试；清空/过期清理部分失败时也会先清成功条目的投影缓存。
+- **unsupported detach**：宿主缺少 `liveEntryFor`/`detachEntered` 且会话仍活着时中止（409），不删盘。
 
 > 回收站列表里的标题来自 `trash/<id>/metadata.json`；还原后的标题由日志投影重新计算，不依赖旧缓存。
 > 本期**不**清理内容寻址附件与会话产出的工作区文件（误删风险高，留待后续版本）。

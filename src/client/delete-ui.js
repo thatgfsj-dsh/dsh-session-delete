@@ -321,7 +321,8 @@
       useEffect(() => { void load() }, [load])
 
       const entries = state.entries
-      const selectedEntries = entries.filter(entry => selected.has(entry.trashId))
+      const selectableEntries = entries.filter(entry => entry.partial !== true)
+      const selectedEntries = selectableEntries.filter(entry => selected.has(entry.trashId))
 
       const act = async (kind, work) => {
         setBusy(kind)
@@ -388,7 +389,9 @@
         return next
       })
       const toggleAll = () => setSelected(previous => (
-        previous.size >= entries.length && entries.length > 0 ? new Set() : new Set(entries.map(entry => entry.trashId))
+        previous.size >= selectableEntries.length && selectableEntries.length > 0
+          ? new Set()
+          : new Set(selectableEntries.map(entry => entry.trashId))
       ))
 
       const settings = state.settings ?? { retentionDays: 30, sweepOnStartup: true }
@@ -397,8 +400,9 @@
           h('input', {
             type: 'checkbox',
             checked: selected.has(entry.trashId),
-            disabled: busy !== '',
+            disabled: busy !== '' || entry.partial === true,
             'aria-label': t('settings.selectAll'),
+            title: entry.partial === true ? t('settings.partialRestoreBlocked') : undefined,
             onChange: () => toggleEntry(entry.trashId),
           }),
         ),
@@ -406,6 +410,9 @@
           h('div', { style: { fontWeight: 500 } }, entry.title || t('settings.untitled')),
           h('div', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' } }, shortId(entry.sessionId)),
           entry.members.length > 1 ? h('div', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' } }, t('settings.subagents', { n: entry.members.length - 1 })) : null,
+          entry.partial === true
+            ? h('div', { style: { fontSize: '11px', color: 'var(--dsw-alias-state-error-primary)' } }, `${t('settings.partialShort')}：${t('settings.partial')}`)
+            : null,
         ),
         h('td', { style: styles.td }, entry.workspaceTitle || entry.workspacePath || '—'),
         h('td', { style: styles.td }, formatTime(entry.deletedAt)),
@@ -413,8 +420,9 @@
         h('td', { style: styles.td },
           h('button', {
             type: 'button',
-            style: styles.smallButton,
-            disabled: busy !== '',
+            style: entry.partial === true ? { ...styles.smallButton, opacity: 0.5 } : styles.smallButton,
+            disabled: busy !== '' || entry.partial === true,
+            title: entry.partial === true ? t('settings.partialRestoreBlocked') : undefined,
             onClick: () => void act('restore', () => apiPost('/restore', { sessionId: entry.sessionId })),
           }, t('settings.restore')),
           h('button', {

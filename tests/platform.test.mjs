@@ -33,8 +33,8 @@ test('assertSessionId：Windows 非法字符/保留名/结尾点空格', { skip:
     assert.throws(() => assertSessionId(bad), /会话 ID/, `应当拒绝：${JSON.stringify(bad)}`)
   }
   assert.equal(assertSessionId('session-8f0c1a2b'), 'session-8f0c1a2b')
-  // 前后空白会先 trim，再按文件名规则校验（'foo ' 归一化为 'foo'，合法）
-  assert.equal(assertSessionId(' foo '), 'foo')
+  // 不做 trim：前后空白直接判非法。
+  assert.throws(() => assertSessionId(' foo '), /会话 ID/)
 })
 
 test('removeTree：Windows 只读文件也能递归删除', { skip: process.platform !== 'win32' }, async () => {

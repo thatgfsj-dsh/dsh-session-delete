@@ -8,7 +8,7 @@
  *     trash/<trashId>/payload/0, payload/1, ...   ← 每个被删会话的原始目录
  */
 import { mkdir, readdir, rm } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { realpath } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { atomicWriteJson, exists, moveTree, readJsonSafe, removeTree, sizeOf, statSafe } from './fs-util.mjs'
@@ -146,6 +146,9 @@ export function normalizeMetadata(raw, trashId) {
     workspaceSessionIndex: Number.isInteger(raw.workspaceSessionIndex) ? raw.workspaceSessionIndex : -1,
     beforeSessionId: typeof raw.beforeSessionId === 'string' ? raw.beforeSessionId : '',
     hostVersion: typeof raw.hostVersion === 'string' ? raw.hostVersion : '',
+    partial: raw.partial === true,
+    restoredInPlace: Array.isArray(raw.restoredInPlace) ? raw.restoredInPlace.filter(item => typeof item === 'string') : [],
+    rollbackFailures: Array.isArray(raw.rollbackFailures) ? raw.rollbackFailures.filter(item => typeof item === 'string') : [],
     members,
   }
 }
@@ -180,12 +183,9 @@ export async function listEntries() {
  */
 export async function findEntryBySession(sessionId) {
   const target = assertSessionId(sessionId)
-  const bare = target.startsWith('session-') ? target.slice('session-'.length) : target
+  // 破坏性路径只认精确 ID：`abc` 与 `session-abc` 是两个不同会话，不能互相命中。
   const entries = await listEntries()
-  return entries.find(entry => entry.members.some(member => {
-    const memberBare = member.sessionId.startsWith('session-') ? member.sessionId.slice('session-'.length) : member.sessionId
-    return member.sessionId === target || memberBare === bare
-  }))
+  return entries.find(entry => entry.members.some(member => member.sessionId === target))
 }
 
 /**
@@ -193,7 +193,8 @@ export async function findEntryBySession(sessionId) {
  * @param {{members: {sessionId: string, dirPath: string, title?: string, isRoot?: boolean, archived?: boolean, pinned?: boolean, sizeBytes?: number}[], meta: object}} input - 成员与公共元数据。
  * @returns {Promise<object>} 写入后的条目（带 `dir`）。
  */
-export async function moveIntoTrash(input) {
+export async function moveIntoTrash(input, deps = {}) {
+  const move = deps.moveTree ?? moveTree
   const members = Array.isArray(input?.members) ? input.members : []
   if (members.length === 0) throw new Error('没有可移入回收站的会话目录')
   const trashId = `${Date.now()}-${randomUUID().slice(0, 8)}`
@@ -201,11 +202,13 @@ export async function moveIntoTrash(input) {
   const payloadRoot = join(dir, 'payload')
   await mkdir(payloadRoot, { recursive: true })
   const moved = []
+  const moveWarnings = []
   try {
     for (const [index, member] of members.entries()) {
       const payload = String(index)
       const target = join(payloadRoot, payload)
-      await moveTree(member.dirPath, target)
+      const movedResult = await move(member.dirPath, target)
+      if (typeof movedResult?.sourceCleanupWarning === 'string' && movedResult.sourceCleanupWarning !== '') moveWarnings.push(`${member.sessionId}：${movedResult.sourceCleanupWarning}`)
       // 锁文件不进回收站：官方 POSIX 锁是 flock 绑定 inode、Windows 是同名内核信号量，
       // 把 session.lock 一起搬走/还原等于把旧锁带回原位，重开会话时可能撞上它。
       // 官方明确「删除活会话的锁文件是安全的」：持有者会校验 inode/路径并重建。
@@ -229,56 +232,162 @@ export async function moveIntoTrash(input) {
     }
     await atomicWriteJson(join(dir, 'metadata.json'), meta)
     const normalized = normalizeMetadata(meta, trashId)
-    return { ...normalized, dir }
+    return { ...normalized, dir, warnings: moveWarnings }
   } catch (error) {
+    const rollbackFailures = []
     for (const member of [...moved].reverse()) {
-      await moveTree(join(payloadRoot, member.payload), member.dirPath).catch(() => {})
+      try {
+        await move(join(payloadRoot, member.payload), member.dirPath)
+      } catch (rollbackError) {
+        rollbackFailures.push(`${member.sessionId}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`)
+      }
     }
-    await removeTree(dir).catch(() => {})
-    throw error
+    if (rollbackFailures.length === 0) {
+      // 所有成员都已搬回原位，条目里没有数据，可以安全清理。
+      await removeTree(dir).catch(() => {})
+      throw error
+    }
+    // 回滚未完成：payload 里是这些成员仅存的副本，绝不能删；保留条目并标记 partial 供 UI/后续重试识别。
+    const partialMeta = {
+      ...input.meta,
+      version: METADATA_VERSION,
+      partial: true,
+      deletedAt: input.meta?.deletedAt ?? new Date().toISOString(),
+      rollbackFailures,
+      members: moved.map(member => ({
+        sessionId: member.sessionId,
+        title: member.title ?? '',
+        originalPath: member.dirPath,
+        payload: member.payload,
+        sizeBytes: member.sizeBytes ?? 0,
+        isRoot: member.isRoot === true,
+        archived: member.archived === true,
+        pinned: member.pinned === true,
+      })),
+    }
+    await atomicWriteJson(join(dir, 'metadata.json'), partialMeta).catch(() => {})
+    const detail = error instanceof Error ? error.message : String(error)
+    const wrapped = new Error(`${detail}；回滚未完成（${rollbackFailures.join('；')}），数据已保留在回收站临时条目 ${dir}，请先不要手动删除`)
+    wrapped.cause = error
+    throw wrapped
+  }
+}
+
+/** 读取当前宿主认可的会话 ID 集合；失败返回 undefined（调用方必须 fail-closed）。 */
+async function listValidSessionIds(ctx) {
+  if (ctx === undefined || typeof ctx.get !== 'function') return undefined
+  try {
+    const persistence = ctx.get('sessionPersistence')
+    if (persistence === undefined || typeof persistence.list !== 'function') return undefined
+    return new Set((await persistence.list()).map(snapshot => snapshot?.header?.id))
+  } catch {
+    return undefined
   }
 }
 
 /**
- * 把一条回收站条目搬回原路径。目标已存在则拒绝，避免覆盖一个同名新会话。
- * @param {object} entry - `listEntries()` 返回的条目。
- * @returns {Promise<{restored: string[], skipped: {sessionId: string, reason: string}[]}>} 还原结果。
+ * 把一条回收站条目搬回原路径。
+ *
+ * 支持「上次还原中断」的续做：
+ * - payload 还在、原路径不存在 → 正常搬回；
+ * - payload 不在、原路径存在且是宿主认可的合法会话 → 视为上次已还原完成，跳过；
+ * - 原路径存在但不是合法会话（无头残骸）→ 清掉残骸后继续；列表不可用/无法判断时拒绝（fail-closed）。
+ * @param {object} ctxOrEntry - 宿主插件上下文（新签名）或条目（旧签名）。
+ * @param {object} [maybeEntry] - 条目（新签名）。
+ * @returns {Promise<{restored: string[], skipped: {sessionId: string, reason: string}[], alreadyRestored: string[], cleanupWarning: string}>} 还原结果。
  */
-export async function restoreEntry(entry) {
+export async function restoreEntry(ctxOrEntry, maybeEntry, deps = {}) {
+  const ctx = maybeEntry === undefined ? undefined : ctxOrEntry
+  const entry = maybeEntry === undefined ? ctxOrEntry : maybeEntry
   if (entry === undefined || typeof entry.dir !== 'string') throw new Error('回收站条目不存在')
   if (!isInside(resolve(trashRoot()), resolve(entry.dir))) {
     throw new Error(`回收站元数据异常：条目目录越界（${entry.dir}）`)
   }
   const quarantine = resolve(sessionsRoot())
   const canonicalRoot = await realpath(quarantine).catch(() => quarantine)
+  const move = deps.moveTree ?? moveTree
+  const remove = deps.removeTree ?? removeTree
+  const validIds = await listValidSessionIds(ctx)
+  const actions = []
   for (const member of entry.members) {
     if (!isInside(quarantine, resolve(member.originalPath))) {
       throw new Error(`回收站元数据异常：原路径不在会话目录下（${member.originalPath}）`)
     }
-    // 原路径的父目录必须真实落在会话根内：防止 sessions 根下某一级父目录是符号链接时被带出根外。
     const parent = resolve(member.originalPath, '..')
-    const canonicalParent = await realpath(parent).catch(() => undefined)
-    if (canonicalParent === undefined || !isInside(canonicalRoot, canonicalParent)) {
-      throw new Error(`回收站元数据异常：原路径父目录不在会话目录下（${member.originalPath}）`)
+    if (await exists(parent)) {
+      // 已存在的父目录必须真实落在会话根内：防止某一级是符号链接被带出根外。
+      const canonicalParent = await realpath(parent).catch(() => undefined)
+      if (canonicalParent === undefined || !isInside(canonicalRoot, canonicalParent)) {
+        throw new Error(`回收站元数据异常：原路径父目录不在会话目录下（${member.originalPath}）`)
+      }
     }
-    if (!await exists(join(entry.dir, 'payload', member.payload))) {
+    const payloadPath = join(entry.dir, 'payload', member.payload)
+    const payloadExists = await exists(payloadPath)
+    const originalExists = await exists(member.originalPath)
+    const listed = validIds === undefined ? undefined : validIds.has(member.sessionId)
+    if (!payloadExists) {
+      if (originalExists && listed === true) {
+        actions.push({ member, kind: 'already-restored' })
+        continue
+      }
+      if (listed === undefined) {
+        throw new Error(`无法读取会话列表，暂时无法判断会话 ${member.sessionId} 的还原状态，请稍后重试`)
+      }
       throw new Error(`回收站条目缺少数据文件：${member.sessionId}`)
     }
-    if (await exists(member.originalPath)) {
-      throw new Error(`原路径已存在，无法还原：${member.originalPath}`)
+    if (originalExists) {
+      if (listed === true) {
+        // 上次还原已把目录搬回、但条目没删干净：不要覆盖用户正在用的会话。
+        actions.push({ member, kind: 'already-restored' })
+        continue
+      }
+      if (listed === undefined) {
+        throw new Error(`原路径已存在且无法确认是否为合法会话：${member.originalPath}，请稍后重试`)
+      }
+      // 确认不是合法会话（无头残骸）才清理；清理失败不要继续覆盖。
+      await remove(member.originalPath)
     }
+    actions.push({ member, kind: 'move', payloadPath })
   }
+
   const done = []
+  const alreadyRestored = []
   try {
-    for (const member of entry.members) {
-      await moveTree(join(entry.dir, 'payload', member.payload), member.originalPath)
+    for (const action of actions) {
+      if (action.kind === 'already-restored') {
+        alreadyRestored.push(action.member)
+        continue
+      }
+      await mkdir(dirname(action.member.originalPath), { recursive: true })
+      await move(action.payloadPath, action.member.originalPath)
       // 兼容旧版本回收站条目：它们可能把 session.lock 一起搬走了，还原时不要再带回旧锁。
-      await rm(join(member.originalPath, 'session.lock'), { force: true }).catch(() => {})
-      done.push(member)
+      await rm(join(action.member.originalPath, 'session.lock'), { force: true }).catch(() => {})
+      done.push(action.member)
     }
   } catch (error) {
+    const rollbackFailures = []
     for (const member of [...done].reverse()) {
-      await moveTree(member.originalPath, join(entry.dir, 'payload', member.payload)).catch(() => {})
+      try {
+        await move(member.originalPath, join(entry.dir, 'payload', member.payload))
+      } catch (rollbackError) {
+        rollbackFailures.push(`${member.sessionId}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`)
+      }
+    }
+    if (rollbackFailures.length > 0) {
+      // 保留条目并记录「已搬回原位」的成员，下一次还原可以跳过它们继续。
+      try {
+        const raw = await readJsonSafe(join(entry.dir, 'metadata.json'))
+        const partialMeta = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+        partialMeta.partial = true
+        partialMeta.restoredInPlace = [...new Set([...(Array.isArray(partialMeta.restoredInPlace) ? partialMeta.restoredInPlace : []), ...done.map(member => member.sessionId)])]
+        await atomicWriteJson(join(entry.dir, 'metadata.json'), partialMeta)
+      } catch {
+        /* 元数据写不进去也不要删条目 */
+      }
+      const detail = error instanceof Error ? error.message : String(error)
+      const wrapped = new Error(`${detail}；还原回滚未完成（${rollbackFailures.join('；')}），已还原的会话留在原位，条目保留，可再次点还原继续`)
+      wrapped.cause = error
+      throw wrapped
     }
     throw error
   }
@@ -289,7 +398,7 @@ export async function restoreEntry(entry) {
   } catch (error) {
     cleanupWarning = `回收站临时目录清理失败：${error instanceof Error ? error.message : String(error)}`
   }
-  return { restored: entry.members.map(member => member.sessionId), skipped: [], cleanupWarning }
+  return { restored: entry.members.map(member => member.sessionId), skipped: [], alreadyRestored: alreadyRestored.map(member => member.sessionId), cleanupWarning }
 }
 
 /**
@@ -297,12 +406,16 @@ export async function restoreEntry(entry) {
  * @param {object} entry - `listEntries()` 返回的条目。
  * @returns {Promise<number>} 释放的字节数。
  */
-export async function purgeEntry(entry) {
+export async function purgeEntry(entry, deps = {}) {
+  const remove = deps.removeTree ?? removeTree
   if (entry === undefined || typeof entry.dir !== 'string') throw new Error('回收站条目不存在')
   const root = resolve(trashRoot())
   if (!isInside(root, resolve(entry.dir))) throw new Error(`回收站元数据异常：条目目录越界（${entry.dir}）`)
   const freed = Number.isFinite(entry.sizeBytes) && entry.sizeBytes > 0 ? entry.sizeBytes : await sizeOf(entry.dir)
-  await removeTree(entry.dir)
+  // 先删 payload、最后删 metadata：中途失败时条目仍在列表里（可见、可重试），不会变成不可见的磁盘孤儿。
+  const payloadDir = join(entry.dir, 'payload')
+  if (await exists(payloadDir)) await remove(payloadDir)
+  await remove(entry.dir)
   return freed
 }
 

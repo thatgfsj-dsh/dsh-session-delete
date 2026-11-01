@@ -25,13 +25,14 @@ const TEXT = { 'action.delete': '删除会话…', 'action.deleteHint': '删除�
 'settings.sweepOnStartup': '启动时自动清理过期条目', 'settings.sweepNow': '立即清理', 'settings.emptyTrash': '清空回收站', 'settings.selectAll': '全选', 'settings.batchRestore': '批量还原', 'settings.batchRestoreDone': '已还原 {n} 条',
 'settings.selectedCount': '已选 {n} 条', 'settings.confirmEmptyYes': '确认清空', 'settings.confirmPurgeYes': '确认彻底删除', 'settings.confirmEmptyHint': '确认清空回收站？此操作不可撤销。', 'settings.confirmPurgeHint': '确认彻底删除这条回收站记录？此操作不可撤销。',
 'settings.confirmCancel': '取消', 'settings.emptyConfirm': '确认清空回收站？此操作不可撤销。', 'settings.sweepDone': '已清理 {n} 条过期条目', 'settings.emptyDone': '已清空回收站（{n} 条）', 'settings.settingsFailed': '保存设置失败：{detail}',
-'settings.subagents': '含 {n} 个子代理会话', 'settings.archived': '已归档', 'settings.pinned': '已置顶', 'common.yes': '是', 'common.no': '否', 'batch.open': '批量管理', 'batch.title': '批量管理', 'batch.clear': '清空选择',
-'batch.selected': '已选 {n} 个', 'batch.stop': '先停止运行中的会话', 'batch.trash': '移入回收站', 'batch.purge': '彻底删除', 'batch.loadFailed': '读取会话失败：{detail}', 'batch.none': '请先勾选会话', 'batch.working': '正在处理 {total} 个会话…',
-'batch.summary': '成功 {ok} 个，失败 {fail} 个', 'batch.selectAllVisible': '全选可见', 'batch.selectAllCapped': '一次最多处理 200 个会话，已选中前 200 个', 'batch.confirm.trashTitle': '确认移入回收站？', 'batch.confirm.purgeTitle': '确认彻底删除？',
-'batch.confirm.summary': '将处理 {n} 个会话，合计 {size}。', 'batch.confirm.workspaces': '工作区分布：{list}', 'batch.confirm.breakdown': '其中：运行中 {running} 个、已归档 {archived} 个、含子代理 {subagents} 个',
-'batch.confirm.stopOn': '已勾选「先停止运行中的会话」', 'batch.confirm.stopOff': '未勾选「先停止运行中的会话」，运行中的会话会被拒绝', 'batch.confirm.trashNote': '删除后可在「设置 → 会话回收站」还原。', 'batch.confirm.purgeWarning': '彻底删除不进回收站，删除后无法恢复。',
-'batch.confirm.trashConfirm': '确认移入回收站', 'batch.confirm.purgeConfirm': '确认彻底删除', 'batch.confirm.cancel': '取消', 'batch.failureLine': '会话「{title}」（{id}）：{detail}', 'batch.failedKept': '失败项已保留勾选，可直接重试',
-'batch.failures': '失败项：', 'batch.unGroupedTitle': '未分组', 'batch.refresh': '刷新', 'batch.close': '关闭', 'batch.exit': '退出批量', 'batch.checkbox': '选择此会话', 'batch.hostUnavailable': '宿主接口不可用：请重启 dsh web 后重试（批量接口需要宿主 0.1.1+）', }
+'settings.subagents': '含 {n} 个子代理会话', 'settings.partial': '条目不完整（上次删除/还原中断），只能彻底删除或再次还原补齐', 'settings.partialShort': '不完整', 'settings.partialRestoreBlocked': '该条目不完整，不能还原', 'settings.archived': '已归档',
+'settings.pinned': '已置顶', 'common.yes': '是', 'common.no': '否', 'batch.open': '批量管理', 'batch.title': '批量管理', 'batch.clear': '清空选择', 'batch.selected': '已选 {n} 个', 'batch.stop': '先停止运行中的会话', 'batch.trash': '移入回收站',
+'batch.purge': '彻底删除', 'batch.loadFailed': '读取会话失败：{detail}', 'batch.none': '请先勾选会话', 'batch.working': '正在处理 {total} 个会话…', 'batch.summary': '成功 {ok} 个，失败 {fail} 个', 'batch.selectAllVisible': '全选可见',
+'batch.selectAllCapped': '一次最多处理 200 个会话，已选中前 200 个', 'batch.confirm.trashTitle': '确认移入回收站？', 'batch.confirm.purgeTitle': '确认彻底删除？', 'batch.confirm.summary': '将处理 {n} 个会话，合计 {size}。',
+'batch.confirm.workspaces': '工作区分布：{list}', 'batch.confirm.breakdown': '其中：运行中 {running} 个、已归档 {archived} 个、含子代理 {subagents} 个', 'batch.confirm.stopOn': '已勾选「先停止运行中的会话」',
+'batch.confirm.stopOff': '未勾选「先停止运行中的会话」，运行中的会话会被拒绝', 'batch.confirm.trashNote': '删除后可在「设置 → 会话回收站」还原。', 'batch.confirm.purgeWarning': '彻底删除不进回收站，删除后无法恢复。', 'batch.confirm.trashConfirm': '确认移入回收站',
+'batch.confirm.purgeConfirm': '确认彻底删除', 'batch.confirm.cancel': '取消', 'batch.failureLine': '会话「{title}」（{id}）：{detail}', 'batch.failedKept': '失败项已保留勾选，可直接重试', 'batch.failures': '失败项：', 'batch.unGroupedTitle': '未分组',
+'batch.refresh': '刷新', 'batch.close': '关闭', 'batch.exit': '退出批量', 'batch.checkbox': '选择此会话', 'batch.hostUnavailable': '宿主接口不可用：请重启 dsh web 后重试（批量接口需要宿主 0.1.1+）', }
 const en = TEXT
 /** 把字节数变成人话。 */
 function formatBytes(bytes) { const value = Number(bytes)
@@ -343,7 +344,8 @@ setSelected(previous => new Set([...previous].filter(trashId => entries.some(ent
 }, [t])
 useEffect(() => { void load() }, [load])
 const entries = state.entries
-const selectedEntries = entries.filter(entry => selected.has(entry.trashId))
+const selectableEntries = entries.filter(entry => entry.partial !== true)
+const selectedEntries = selectableEntries.filter(entry => selected.has(entry.trashId))
 const act = async (kind, work) => { setBusy(kind)
 try { const result = await work()
 if (result?.ok !== true) { noticeStore.show({ kind: 'error', text: errorText(result, t('settings.actionFailed', { detail: '未知错误' })) })
@@ -387,17 +389,21 @@ if (next.has(trashId)) next.delete(trashId)
 else next.add(trashId)
 return next
 })
-const toggleAll = () => setSelected(previous => ( previous.size >= entries.length && entries.length > 0 ? new Set() : new Set(entries.map(entry => entry.trashId))
+const toggleAll = () => setSelected(previous => ( previous.size >= selectableEntries.length && selectableEntries.length > 0
+? new Set()
+: new Set(selectableEntries.map(entry => entry.trashId))
 ))
 const settings = state.settings ?? { retentionDays: 30, sweepOnStartup: true }
-const rows = entries.map(entry => h('tr', { key: entry.trashId }, h('td', { style: { ...styles.td, width: '28px' } }, h('input', { type: 'checkbox', checked: selected.has(entry.trashId), disabled: busy !== '',
-'aria-label': t('settings.selectAll'), onChange: () => toggleEntry(entry.trashId), }), ), h('td', { style: styles.td }, h('div', { style: { fontWeight: 500 } }, entry.title || t('settings.untitled')),
+const rows = entries.map(entry => h('tr', { key: entry.trashId }, h('td', { style: { ...styles.td, width: '28px' } }, h('input', { type: 'checkbox', checked: selected.has(entry.trashId),
+disabled: busy !== '' || entry.partial === true, 'aria-label': t('settings.selectAll'), title: entry.partial === true ? t('settings.partialRestoreBlocked') : undefined, onChange: () => toggleEntry(entry.trashId), }), ),
+h('td', { style: styles.td }, h('div', { style: { fontWeight: 500 } }, entry.title || t('settings.untitled')),
 h('div', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' } }, shortId(entry.sessionId)),
-entry.members.length > 1 ? h('div', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' } }, t('settings.subagents', { n: entry.members.length - 1 })) : null, ),
-h('td', { style: styles.td }, entry.workspaceTitle || entry.workspacePath || '—'), h('td', { style: styles.td }, formatTime(entry.deletedAt)), h('td', { style: styles.td }, formatBytes(entry.sizeBytes)),
-h('td', { style: styles.td }, h('button', { type: 'button', style: styles.smallButton, disabled: busy !== '', onClick: () => void act('restore', () => apiPost('/restore', { sessionId: entry.sessionId })),
-}, t('settings.restore')), h('button', { type: 'button', style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' }, disabled: busy !== '', onClick: () => setConfirmPurge(entry.trashId),
-}, t('settings.purge')), ), ))
+entry.members.length > 1 ? h('div', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' } }, t('settings.subagents', { n: entry.members.length - 1 })) : null, entry.partial === true
+? h('div', { style: { fontSize: '11px', color: 'var(--dsw-alias-state-error-primary)' } }, `${t('settings.partialShort')}：${t('settings.partial')}`)
+: null, ), h('td', { style: styles.td }, entry.workspaceTitle || entry.workspacePath || '—'), h('td', { style: styles.td }, formatTime(entry.deletedAt)), h('td', { style: styles.td }, formatBytes(entry.sizeBytes)),
+h('td', { style: styles.td }, h('button', { type: 'button', style: entry.partial === true ? { ...styles.smallButton, opacity: 0.5 } : styles.smallButton, disabled: busy !== '' || entry.partial === true,
+title: entry.partial === true ? t('settings.partialRestoreBlocked') : undefined, onClick: () => void act('restore', () => apiPost('/restore', { sessionId: entry.sessionId })), }, t('settings.restore')), h('button', {
+type: 'button', style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' }, disabled: busy !== '', onClick: () => setConfirmPurge(entry.trashId), }, t('settings.purge')), ), ))
 return h('section', { style: { maxWidth: '860px' } }, h('h2', { style: { margin: '0 0 6px', fontSize: '16px', fontWeight: 600 } }, t('settings.title')), h('p', { style: styles.hint }, t('settings.description')),
 h('div', { style: styles.cardPanel }, h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' } },
 h('div', { style: { fontSize: '13px', fontWeight: 500 } }, t('settings.usage', { count: state.usage.count, size: formatBytes(state.usage.bytes) })),

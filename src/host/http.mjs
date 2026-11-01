@@ -25,13 +25,33 @@ export function json(status, body) {
  * @returns {Promise<object>} 解析后的对象。
  */
 export async function readJsonBody(request) {
-  let text
+  // 先看 content-length；再按流读取并在超限时立刻停止，避免把超大 body 整个读进内存。
+  const declared = Number(request.headers.get('content-length'))
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) throw new DeleteError(ERROR_CODES.badRequest, '请求体过大')
+  let text = ''
   try {
-    text = await request.text()
+    if (request.body === null) {
+      text = ''
+    } else {
+      const reader = request.body.getReader()
+      const decoder = new TextDecoder()
+      let size = 0
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        size += value.byteLength
+        if (size > MAX_BODY_BYTES) {
+          await reader.cancel().catch(() => {})
+          throw new DeleteError(ERROR_CODES.badRequest, '请求体过大')
+        }
+        text += decoder.decode(value, { stream: true })
+      }
+      text += decoder.decode()
+    }
   } catch (error) {
+    if (error instanceof DeleteError) throw error
     throw new DeleteError(ERROR_CODES.badRequest, `读取请求体失败：${error instanceof Error ? error.message : String(error)}`)
   }
-  if (text.length > MAX_BODY_BYTES) throw new DeleteError(ERROR_CODES.badRequest, '请求体过大')
   if (text.trim() === '') return {}
   let parsed
   try {

@@ -54,8 +54,9 @@ export const projCacheDir = () => join(storagesRoot(), 'session_projcache', 'ses
  */
 export function assertSessionId(id) {
   const fail = detail => new DeleteError(ERROR_CODES.badSessionId, detail, { status: 400 })
-  if (typeof id !== 'string' || id.trim() === '') throw fail('会话 ID 不能为空')
-  const value = id.trim()
+  if (typeof id !== 'string' || id === '') throw fail('会话 ID 不能为空')
+  // 不做 trim：前后空白属于非法字符，静默归一化会把 " abc " 当成 abc，破坏「精确 ID」约定。
+  const value = id
   if (value.length > 200) throw fail('会话 ID 过长')
   if (value === '.' || value === '..') throw fail('会话 ID 非法')
   if (!/^[A-Za-z0-9._:-]+$/.test(value)) throw fail('会话 ID 含有非法字符')
