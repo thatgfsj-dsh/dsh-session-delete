@@ -7,7 +7,7 @@ import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { executeDelete, executeEmptyTrash, executePurgeTrashEntry, executeRestore, executeSweep } from '../src/host/execute.mjs'
+import { cleanResurrectedResidue, executeDelete, executeEmptyTrash, executePurgeTrashEntry, executeRestore, executeSweep } from '../src/host/execute.mjs'
 import { listEntries, moveIntoTrash, readSettings } from '../src/host/trash.mjs'
 import { makeFakeCtx, makeWorkspace } from './fakes.mjs'
 
@@ -25,11 +25,12 @@ async function withHome(run) {
   }
 }
 
-/** 造会话目录。 */
+/** 造会话目录（带官方写锁文件，用来验证删除不会把旧锁带进回收站）。 */
 async function makeDir(home, id, bytes = 5) {
   const dir = join(home, 'sessions', '--proj--', id)
   await mkdir(dir, { recursive: true })
   await writeFile(join(dir, 'session.v4.jsonl.zstd'), 'x'.repeat(bytes), 'utf8')
+  await writeFile(join(dir, 'session.lock'), '', 'utf8')
   return dir
 }
 
@@ -63,7 +64,7 @@ function makeRegistry(entity, options = {}) {
 const ROOT = 'session-aaaaaaaa-1111-2222-3333-444444444444'
 const CHILD = 'session-bbbbbbbb-1111-2222-3333-444444444444'
 
-test('回收站模式：搬目录 → 摘活体 → 清记账 → 保留投影缓存 → 广播', async () => {
+test('回收站模式：先摘活体再搬目录，清记账与投影缓存，旧锁不进回收站', async () => {
   await withHome(async home => {
     const dir = await makeDir(home, ROOT, 12)
     const cacheFile = await makeProjCache(home, ROOT)
@@ -81,27 +82,29 @@ test('回收站模式：搬目录 → 摘活体 → 清记账 → 保留投影�
     assert.equal(result.ok, true)
     assert.equal(result.mode, 'trash')
     assert.equal(existsSync(dir), false)
-    // 移入回收站保留投影缓存，还原后侧栏标题不丢；彻底删除时才清。
-    assert.equal(existsSync(cacheFile), true)
+    // 投影缓存两种模式都清：幽灵投影会让插件面板显示「还在但打不开」的会话。
+    assert.equal(existsSync(cacheFile), false)
     assert.deepEqual(fake.detaches, [ROOT])
     assert.deepEqual(workspaceCalls.detach, [ROOT])
     assert.deepEqual(registry.calls.unarchive, [ROOT])
     assert.deepEqual(registry.calls.unpin, [ROOT])
-    assert.ok(fake.emitted.some(item => item.name === 'api-session/removed' && item.payload === ROOT))
-    assert.equal(fake.calls.domainDelete.includes(ROOT), false)
+    // 活体摘除时官方会发同一条事件，这里不重复广播。
+    assert.equal(fake.emitted.some(item => item.name === 'api-session/removed' && item.payload === ROOT), false)
+    assert.equal(fake.calls.domainDelete.includes(ROOT), true)
     const entries = await listEntries()
     assert.equal(entries.length, 1)
     assert.equal(entries[0].title, '测试会话')
     assert.equal(entries[0].workspaceTitle, '测试工作区')
     assert.equal(entries[0].archived, true)
     assert.equal(entries[0].pinned, true)
-    // 回收站里确实有日志副本
+    // 回收站里确实有日志副本，但不保存旧锁文件
     const payload = join(entries[0].dir, 'payload', '0')
     assert.equal((await readFile(join(payload, 'session.v4.jsonl.zstd'), 'utf8')).length, 12)
+    assert.equal(existsSync(join(payload, 'session.lock')), false)
   })
 })
 
-test('彻底删除回收站条目：清掉投影缓存', async () => {
+test('彻底删除回收站条目：投影缓存已在删除时清掉，条目可正常彻底删除', async () => {
   await withHome(async home => {
     const dir = await makeDir(home, ROOT, 12)
     const cacheFile = await makeProjCache(home, ROOT)
@@ -112,7 +115,7 @@ test('彻底删除回收站条目：清掉投影缓存', async () => {
       projections: { stateOf: () => '测试会话' },
     })
     await executeDelete(fake.ctx, { sessionId: ROOT, mode: 'trash', title: '测试会话' })
-    assert.equal(existsSync(cacheFile), true)
+    assert.equal(existsSync(cacheFile), false)
     const purged = await executePurgeTrashEntry(fake.ctx, ROOT)
     assert.equal(purged.ok, true)
     assert.equal(existsSync(cacheFile), false)
@@ -235,7 +238,7 @@ test('幂等：会话已不存在返回 already-gone，已在回收站返回 alr
   })
 })
 
-test('摘活体失败时把目录搬回原位并报错', async () => {
+test('摘活体失败时不搬目录、不留回收站条目，直接报错', async () => {
   await withHome(async home => {
     const dir = await makeDir(home, ROOT)
     const fake = makeFakeCtx({ home, sessions: [{ id: ROOT, header: { id: ROOT } }] })
@@ -251,10 +254,34 @@ test('摘活体失败时把目录搬回原位并报错', async () => {
     }
     await assert.rejects(
       () => executeDelete(fake.ctx, { sessionId: ROOT, mode: 'trash' }),
-      error => error.code === '摘除活体会话失败，已回滚',
+      error => error.code === '摘除活体会话失败，已取消删除',
     )
     assert.equal(existsSync(dir), true)
     assert.deepEqual(await listEntries(), [])
+  })
+})
+
+test('删除后原位出现无头残骸：清掉；宿主已重新登记的合法会话：保留', async () => {
+  await withHome(async home => {
+    const ghost = await makeDir(home, ROOT)
+    // 模拟写句柄按旧路径写回：只有锁/半截日志，没有头部，宿主 list() 不会认它。
+    const members = [{ sessionId: ROOT, dirPath: ghost }]
+    const steps = []
+    const warnings = []
+    const leftovers = []
+    const fake = makeFakeCtx({ home, snapshots: [] })
+    await cleanResurrectedResidue(fake.ctx, members, steps, warnings, leftovers)
+    assert.equal(existsSync(ghost), false)
+    assert.equal(warnings.some(item => item.includes('无头残骸')), true)
+
+    // 宿主已把它重新登记成合法会话时不能删，只告警。
+    const legal = await makeDir(home, ROOT)
+    const legalCtx = makeFakeCtx({ home, snapshots: [{ header: { id: ROOT, cwd: '/proj' }, sizeBytes: 5 }] })
+    const warnings2 = []
+    const leftovers2 = []
+    await cleanResurrectedResidue(legalCtx.ctx, [{ sessionId: ROOT, dirPath: legal }], steps, warnings2, leftovers2)
+    assert.equal(existsSync(legal), true)
+    assert.deepEqual(leftovers2, [legal])
   })
 })
 
@@ -266,6 +293,8 @@ test('回收站还原、彻底删除、清空与过期清理', async () => {
     const restored = await executeRestore(fake.ctx, ROOT)
     assert.equal(restored.ok, true)
     assert.equal(existsSync(dir), true)
+    // 还原不能把旧锁文件带回来：宿主会在下次写入时重建新的锁。
+    assert.equal(existsSync(join(dir, 'session.lock')), false)
     assert.deepEqual(await listEntries(), [])
 
     // 再删一次并彻底删除回收站条目

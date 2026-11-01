@@ -3,10 +3,12 @@
  * 清工作区记账与归档置顶 → 删投影缓存 → 广播 → 汇总结果。
  *
  * 顺序与失败语义：
- * - 「移入回收站」是提交点：搬移本身失败会清理半成品并中止；搬移成功后若摘活体失败，
- *   会把目录搬回原位再报错（可回滚项回滚）。
- * - 提交点之后（清记账 / 清缓存）的失败不再回滚磁盘，逐条记为警告并返回，绝不静默。
- * - 彻底删除没有可回滚副本，所以先摘活体再删盘：摘活体失败直接中止，不留半残。
+ * - 先刷盘、再摘活体、等写句柄释放，最后才搬目录/删盘：反过来的话，目录已离开原位而
+ *   持久化的异步 close 仍按原路径追加日志，会在原位留下无头残骸或旧锁，重开会话时卡死。
+ * - 「移入回收站」的提交点是搬目录：搬移失败时目录没动，只是会话已从内存摘除（刷新页面可恢复），
+ *   直接报错中止。
+ * - 提交点之后（清记账 / 清缓存 / 清残骸）的失败不再回滚磁盘，逐条记为警告并返回，绝不静默。
+ * - 彻底删除没有副本，同样先摘活体再删盘：摘活体失败直接中止，不留半残。
  */
 import { exists, removeTree } from './fs-util.mjs'
 import { DeleteError, ERROR_CODES } from './errors.mjs'
@@ -66,6 +68,7 @@ async function admit(ctx, meta, stopIfRunning, steps) {
 async function detachAll(ctx, ids, steps) {
   const failed = []
   const unsupported = []
+  const detachedIds = []
   for (const id of ids) {
     const result = await detachLiveSession(ctx, id)
     if (result.status === 'failed') {
@@ -75,10 +78,86 @@ async function detachAll(ctx, ids, steps) {
       unsupported.push(id)
       step(steps, `detach:${id}`, false, result.detail)
     } else {
+      if (result.status === 'detached') detachedIds.push(id)
       step(steps, `detach:${id}`, true, result.detail)
     }
   }
-  return { failed, unsupported }
+  return { failed, unsupported, detachedIds }
+}
+
+/** 短暂等待（毫秒）。 */
+const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+
+/**
+ * 摘活体后等宿主把持久化写句柄关掉：`session/disposed` 的 close 是异步的，
+ * 不等它就去搬目录，close 的 drain 会按原路径把日志写回原位。
+ * @param {object} ctx - 宿主插件上下文。
+ * @param {string[]} detachedIds - 真正被摘除的会话 ID。
+ * @returns {Promise<void>} 等待结束。
+ */
+async function settleAfterDetach(ctx, detachedIds) {
+  if (detachedIds.length === 0) return
+  const sessions = ctx.get('sessions')
+  const deadline = Date.now() + 800
+  while (Date.now() < deadline) {
+    if (detachedIds.every(id => sessions?.get?.(id) === undefined)) break
+    await sleep(50)
+  }
+  // 给持久化 close 的 drain/release 留一个很短的静默窗口（正常情况无缓冲事件，几毫秒即可）。
+  await sleep(120)
+}
+
+/**
+ * 删除后复检原位：有些组件（或插件自己的写句柄）会按旧路径把日志写回来，
+ * 留下没有头部的残骸目录。它在宿主看来不是一个合法会话，却会让“重开会话”卡在坏日志上。
+ * 这里把无头残骸清掉；如果宿主已经把同 id 重新登记成合法会话，则保留并告警。
+ * @param {object} ctx - 宿主插件上下文。
+ * @param {{sessionId: string, dirPath: string}[]} members - 本次处理的会话目录。
+ * @param {object[]} steps - 步骤记录。
+ * @param {string[]} warnings - 警告收集。
+ * @param {string[]} leftovers - 残留收集。
+ * @returns {Promise<void>} 完成。
+ */
+export async function cleanResurrectedResidue(ctx, members, steps, warnings, leftovers) {
+  if (members.length === 0) return
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await sleep(attempt === 0 ? 150 : 200)
+    const present = []
+    for (const member of members) {
+      if (await exists(member.dirPath)) present.push(member)
+    }
+    if (present.length === 0) return
+    let listed
+    try {
+      const persistence = ctx.get('sessionPersistence')
+      if (persistence !== undefined && typeof persistence.list === 'function') {
+        listed = new Set((await persistence.list()).map(snapshot => snapshot?.header?.id))
+      }
+    } catch {
+      listed = undefined
+    }
+    let keptLegal = false
+    for (const member of present) {
+      if (listed !== undefined && listed.has(member.sessionId)) {
+        warnings.push(`${member.sessionId}：删除后又被宿主重新登记为合法会话，已保留；如需删除请重新执行`)
+        if (!leftovers.includes(member.dirPath)) leftovers.push(member.dirPath)
+        keptLegal = true
+        continue
+      }
+      try {
+        await removeTree(member.dirPath)
+        step(steps, `residue:${member.sessionId}`, true, '已清理删除后重新出现的无头残骸目录')
+        warnings.push(`${member.sessionId}：删除后原位出现无头残骸（其它组件按旧路径写回），已清理`)
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error)
+        step(steps, `residue:${member.sessionId}`, false, detail)
+        warnings.push(`${member.sessionId}：删除后原位残骸清理失败（${detail}）`)
+        if (!leftovers.includes(member.dirPath)) leftovers.push(member.dirPath)
+        keptLegal = true
+      }
+    }
+    if (keptLegal) return
+  }
 }
 
 /**
@@ -138,15 +217,19 @@ async function cleanPurgedProjections(ctx, entries) {
  * @param {object[]} steps - 步骤记录。
  * @returns {void}
  */
-function broadcastRemoved(ctx, ids, steps) {
+function broadcastRemoved(ctx, ids, steps, alreadyRemoved = new Set()) {
+  let sent = 0
   for (const id of ids) {
+    // 活体摘除时官方会在 session/disposed 里发同一条事件，这里只补发没发过的。
+    if (alreadyRemoved.has(id)) continue
     try {
       ctx.emit('api-session/removed', id)
+      sent += 1
     } catch (error) {
       steps.push({ step: `broadcast:${id}`, ok: false, detail: error instanceof Error ? error.message : String(error) })
     }
   }
-  step(steps, 'broadcast', true, `已广播 ${ids.length} 条会话移除事件`)
+  step(steps, 'broadcast', true, `已广播 ${sent} 条会话移除事件（${ids.length - sent} 条由活体摘除自动广播）`)
 }
 
 /**
@@ -229,9 +312,10 @@ export async function executeDelete(ctx, input) {
   // 目录已经不存在（只剩持久化/投影/记账残留）：不搬移、不报错，清掉残留登记即可。
   if (members.length === 0) {
     step(steps, 'disk', true, '磁盘上已经没有该会话目录')
-    await detachAll(ctx, ids, steps)
+    const detached = await detachAll(ctx, ids, steps)
+    await settleAfterDetach(ctx, detached.detachedIds)
     await cleanAll(ctx, ids, steps, warnings, leftovers)
-    broadcastRemoved(ctx, ids, steps)
+    broadcastRemoved(ctx, ids, steps, new Set(detached.detachedIds))
     return {
       ok: true,
       code: 'already-gone',
@@ -246,24 +330,23 @@ export async function executeDelete(ctx, input) {
   }
 
   let trashEntry
+  // 两种模式都先摘活体再动磁盘：先让持久化写句柄关闭、写锁释放，再搬目录。
+  const detached = await detachAll(ctx, ids, steps)
+  if (detached.failed.length > 0) {
+    throw new DeleteError(ERROR_CODES.detachFailed, detached.failed.map(item => `${item.sessionId}: ${item.detail}`).join('；'), { status: 500 })
+  }
+  await settleAfterDetach(ctx, detached.detachedIds)
+
   if (mode === 'trash') {
     try {
       trashEntry = await moveIntoTrash({ members, meta: trashMeta })
     } catch (error) {
-      step(steps, 'trash', false, error instanceof Error ? error.message : String(error))
-      throw new DeleteError(ERROR_CODES.trashFailed, error instanceof Error ? error.message : String(error), { status: 500 })
+      const detail = error instanceof Error ? error.message : String(error)
+      step(steps, 'trash', false, detail)
+      throw new DeleteError(ERROR_CODES.trashFailed, `${detail}（目录未移动；会话已从内存摘除，刷新页面即可恢复显示）`, { status: 500 })
     }
     step(steps, 'trash', true, `已移入回收站：${trashEntry.trashId}`)
-    const detached = await detachAll(ctx, ids, steps)
-    if (detached.failed.length > 0) {
-      const rollback = await restoreEntry(trashEntry).then(() => '已回滚目录').catch(error => `回滚失败：${error instanceof Error ? error.message : String(error)}`)
-      throw new DeleteError(ERROR_CODES.detachFailed, `${detached.failed.map(item => `${item.sessionId}: ${item.detail}`).join('；')}（${rollback}）`, { status: 500 })
-    }
   } else {
-    const detached = await detachAll(ctx, ids, steps)
-    if (detached.failed.length > 0) {
-      throw new DeleteError(ERROR_CODES.detachFailed, detached.failed.map(item => `${item.sessionId}: ${item.detail}`).join('；'), { status: 500 })
-    }
     for (const member of members) {
       try {
         await removeTree(member.dirPath)
@@ -278,17 +361,11 @@ export async function executeDelete(ctx, input) {
     step(steps, 'purge', true, '已彻底删除会话目录')
   }
 
-  // 移入回收站时保留投影缓存：还原后侧栏标题/元数据直接可用；彻底删除/清空/过期清理时才清。
-  if (mode === 'trash') await cleanWorkspaceOnly(ctx, ids, steps, warnings)
-  else await cleanAll(ctx, ids, steps, warnings, leftovers)
-  broadcastRemoved(ctx, ids, steps)
-
-  for (const member of members) {
-    if (await exists(member.dirPath)) {
-      leftovers.push(member.dirPath)
-      warnings.push(`${member.sessionId}：删除后原目录又出现（可能是延迟写入），请稍后重试或手动清理`)
-    }
-  }
+  // 投影缓存两种模式都清：留下幽灵投影会让插件面板显示一个「还在、但点不开」的会话。
+  // 回收站列表的标题来自 metadata.json，还原后标题由日志投影重新计算，不依赖旧缓存。
+  await cleanAll(ctx, ids, steps, warnings, leftovers)
+  await cleanResurrectedResidue(ctx, members, steps, warnings, leftovers)
+  broadcastRemoved(ctx, ids, steps, new Set(detached.detachedIds))
 
   return {
     ok: true,
