@@ -1,5 +1,5 @@
     return {
-      inject: ['slots', 'locale'],
+      inject: ['slots', 'locale', 'sessions', 'uiWorkspace'],
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, { zh: TEXT, en }), 'session-delete: 词典')
         const t = ctx.locale.bind(NS)

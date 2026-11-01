@@ -192,27 +192,54 @@
       return await response.json().catch(() => ({ ok: false, message: `HTTP ${response.status}` }))
     }
 
-    /** 删除/还原后让侧栏列表重新拉一次（冷会话没有活体事件可依赖）。 */
-    function refreshSessionList(ctx) {
+    /** 取客户端 sessions 服务：优先注入的 `ctx.sessions`，退回 `ctx.get`。 */
+    function sessionsService(ctx) {
       try {
-        const sessions = ctx.get('sessions')
-        // 公共入口 `sessions.refresh()`；旧宿主只有 manager.refreshList 时再退回内部方法。
-        if (typeof sessions?.refresh === 'function') {
-          void sessions.refresh()
-          return
-        }
-        const refresh = sessions?.manager?.refreshList
-        if (typeof refresh === 'function') void refresh.call(sessions.manager)
+        return ctx.sessions ?? ctx.get('sessions')
       } catch {
-        /* 刷新失败不影响删除结果，用户刷新页面即可 */
+        return undefined
       }
+    }
+
+    /** 主动拉一次会话列表；返回是否真的发起了刷新。 */
+    function refreshOnce(ctx) {
+      const sessions = sessionsService(ctx)
+      if (sessions === undefined) return false
+      try {
+        if (typeof sessions.refresh === 'function') {
+          void sessions.refresh()
+          return true
+        }
+        if (typeof sessions.manager?.refreshList === 'function') {
+          void sessions.manager.refreshList()
+          return true
+        }
+      } catch {
+        /* 刷新失败不影响删除结果 */
+      }
+      return false
+    }
+
+    /**
+     * 删除/还原后让侧栏列表重新拉一次（冷会话没有活体事件可依赖）。
+     * 宿主广播与列表拉取有先后，这里做几次短重试，避免残留行点开 404。
+     */
+    function refreshSessionList(ctx) {
+      refreshOnce(ctx)
+      setTimeout(() => { refreshOnce(ctx) }, 350)
+      setTimeout(() => { refreshOnce(ctx) }, 1200)
     }
 
     /** 删掉的正好是当前打开的会话时，把主视图清回空态（官方归档也是这么做的）。 */
     function clearMainIfCurrent(ctx, sessionId) {
+      let ui
       try {
-        const ui = ctx.get('uiWorkspace')
-        if (ui === undefined || typeof ui.clearMain !== 'function') return
+        ui = ctx.uiWorkspace ?? ctx.get('uiWorkspace')
+      } catch {
+        return
+      }
+      if (ui === undefined || typeof ui.clearMain !== 'function') return
+      try {
         if (ui.mainReference?.sessionId === sessionId) ui.clearMain()
       } catch {
         /* 官方主视图接口变化时忽略；侧栏刷新仍会执行 */

@@ -110,7 +110,7 @@ node scripts/ui-smoke.mjs
 - 宿主半边：单测 35 项全绿；隔离环境 HTTP 全链路（inspect/delete/trash/restore/purge/settings）通过。
 - 客户端半边：headless Chrome（临时实例）实测行内按钮、`⋯` 菜单「删除会话…」、中文确认弹窗、回收站列表/还原/彻底删除均可用，控制台无 error / exception；manifest、slot 契约、bundle 组合静态与运行时检查通过。
 - v0.1.1 批量管理：宿主接口与面板逻辑已测；标题行入口通过 DOM 锚点挂载（官方无公开插槽），官方 UI 大改版时可能失效，失效后会自动降级到侧栏底部入口。
-- v0.1.2 批量管理 UI 已用 headless Chrome 在自建临时实例上实测：标题行入口、会话行勾选框、底部批量栏、已选计数正常（见 `node scripts/ui-smoke.mjs`）。
+- v0.1.3 批量管理 UI 已用 headless Chrome 在自建临时实例上实测：标题行入口、会话行勾选框、底部批量栏、已选计数，以及「批量移入回收站后侧栏行及时消失」均通过（见 `node scripts/ui-smoke.mjs`）。
 - 会话行勾选框通过 DOM 注入实现（官方 `sidebar.session.row.leading` 只在空闲行挂载且会被状态点占用，覆盖不全）；注入点依赖官方会话行属性 `data-row-key="session:<id>"`，官方 UI 大改版时可能失效，失效时底部批量栏仍可用（可全选）。
 - **仍需真机点验**：批量面板拖拽/滚动交互、运行中 / 运行中子代理状态下的弹窗、明暗主题切换、删除当前会话后的主视图清空（已实现，调用官方 `uiWorkspace.clearMain()`）、真实鼠标操作。
 
