@@ -73,21 +73,40 @@ async function apiPost(path, body) { const response = await fetch(`${API}${path}
 body: JSON.stringify(body ?? {}), })
 return await response.json().catch(() => ({ ok: false, message: `HTTP ${response.status}` }))
 }
-/** 删除/还原后让侧栏列表重新拉一次（冷会话没有活体事件可依赖）。 */
-function refreshSessionList(ctx) { try { const sessions = ctx.get('sessions')
-if (typeof sessions?.refresh === 'function') { void sessions.refresh()
-return
+/** 取客户端 sessions 服务：优先注入的 `ctx.sessions`，退回 `ctx.get`。 */
+function sessionsService(ctx) { try { return ctx.sessions ?? ctx.get('sessions')
+} catch { return undefined
 }
-const refresh = sessions?.manager?.refreshList
-if (typeof refresh === 'function') void refresh.call(sessions.manager)
+}
+/** 主动拉一次会话列表；返回是否真的发起了刷新。 */
+function refreshOnce(ctx) { const sessions = sessionsService(ctx)
+if (sessions === undefined) return false
+try { if (typeof sessions.refresh === 'function') { void sessions.refresh()
+return true
+}
+if (typeof sessions.manager?.refreshList === 'function') { void sessions.manager.refreshList()
+return true
+}
 } catch {
-/* 刷新失败不影响删除结果，用户刷新页面即可 */
+/* 刷新失败不影响删除结果 */
 }
+return false
+}
+/**
+* 删除/还原后让侧栏列表重新拉一次（冷会话没有活体事件可依赖）。
+* 宿主广播与列表拉取有先后，这里做几次短重试，避免残留行点开 404。
+*/
+function refreshSessionList(ctx) { refreshOnce(ctx)
+setTimeout(() => { refreshOnce(ctx) }, 350)
+setTimeout(() => { refreshOnce(ctx) }, 1200)
 }
 /** 删掉的正好是当前打开的会话时，把主视图清回空态（官方归档也是这么做的）。 */
-function clearMainIfCurrent(ctx, sessionId) { try { const ui = ctx.get('uiWorkspace')
+function clearMainIfCurrent(ctx, sessionId) { let ui
+try { ui = ctx.uiWorkspace ?? ctx.get('uiWorkspace')
+} catch { return
+}
 if (ui === undefined || typeof ui.clearMain !== 'function') return
-if (ui.mainReference?.sessionId === sessionId) ui.clearMain()
+try { if (ui.mainReference?.sessionId === sessionId) ui.clearMain()
 } catch {
 /* 官方主视图接口变化时忽略；侧栏刷新仍会执行 */
 }
@@ -492,8 +511,10 @@ requestAnimationFrame(() => { scheduled = false; decorate() })
 decorate()
 const observer = new MutationObserver(schedule)
 observer.observe(document.body, { childList: true, subtree: true })
+const timer = setInterval(schedule, 400)
 return () => { active = false
 observer.disconnect()
+clearInterval(timer)
 for (const entry of inputsRef.current.values()) entry.host.remove()
 inputsRef.current.clear()
 }
@@ -560,7 +581,7 @@ void run('purge')
 h('button', { type: 'button', style: batchStyles.button, disabled: busy, onClick: () => batchStore.setMode(false) }, t('batch.exit')), failures.length > 0 ? h('div', { style: batchStyles.failures },
 `${t('batch.failures')}：\n` + failures.map(item => `${item.sessionId}：${item.message ?? item.code}`).join('\n'), ) : null, )
 }
-return { inject: ['slots', 'locale'], apply(ctx) { ctx.effect(() => ctx.locale.register(NS, { zh: TEXT, en }), 'session-delete: 词典')
+return { inject: ['slots', 'locale', 'sessions', 'uiWorkspace'], apply(ctx) { ctx.effect(() => ctx.locale.register(NS, { zh: TEXT, en }), 'session-delete: 词典')
 const t = ctx.locale.bind(NS)
 const shell = { ctx, t }
 ctx.slots.inject('sidebar.workspaces.session.row.action', () => ctx.slots.register({ name: 'sidebar.workspaces.session.row.action', id: 'dsh-session-delete', order: 300, locale: NS,

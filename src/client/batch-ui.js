@@ -185,9 +185,12 @@
         decorate()
         const observer = new MutationObserver(schedule)
         observer.observe(document.body, { childList: true, subtree: true })
+        // 兜底轮询：React 复用行节点/批量更新时 MutationObserver 可能错过，多选模式下每 400ms 补齐一次。
+        const timer = setInterval(schedule, 400)
         return () => {
           active = false
           observer.disconnect()
+          clearInterval(timer)
           for (const entry of inputsRef.current.values()) entry.host.remove()
           inputsRef.current.clear()
         }

@@ -16,8 +16,8 @@ async function loadClient() {
   const source = await buildClient({ compact: false })
   // 与参考实现相同的手法：把内部纯函数挂到 checks 上，便于在 Node 里直接断言。
   const patched = source.replace(
-    "    return {\n      inject: ['slots', 'locale'],",
-    "    return {\n      checks: { TEXT, formatBytes, shortId, formatTime, errorText },\n      inject: ['slots', 'locale'],",
+    "    return {\n      inject: ['slots', 'locale', 'sessions', 'uiWorkspace'],",
+    "    return {\n      checks: { TEXT, formatBytes, shortId, formatTime, errorText },\n      inject: ['slots', 'locale', 'sessions', 'uiWorkspace'],",
   )
   assert.notEqual(patched, source, 'client.js 的返回对象形状变了，测试需要同步')
   let loaded
@@ -46,7 +46,7 @@ test('apply 注册六个 slot，顺序与 id 符合契约', async () => {
   const dictionaries = []
   const effects = []
   const module = loaded.factory(() => ({ createElement: () => null }))
-  assert.deepEqual([...module.inject], ['slots', 'locale'])
+  assert.deepEqual([...module.inject], ['slots', 'locale', 'sessions', 'uiWorkspace'])
   const ctx = {
     locale: {
       register: (ns, dicts) => { dictionaries.push([ns, dicts]); return () => {} },

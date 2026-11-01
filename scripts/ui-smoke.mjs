@@ -22,6 +22,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DSH = process.env.DSH_CLI ?? 'dsh'
 const CHROME = process.env.CHROME ?? ['google-chrome', 'google-chrome-stable', 'chromium'].map(name => `/usr/bin/${name}`).find(path => existsSync(path))
 const SHOT = '/tmp/dsh-session-delete-batch-ui.png'
+const SHOT_AFTER = '/tmp/dsh-session-delete-after-delete.png'
 
 const failures = []
 const check = (name, ok, detail = '') => {
@@ -196,10 +197,15 @@ try {
   const triggerCount = await evaluate(page, 'document.querySelectorAll("[data-dsh-session-delete-batch] button").length')
   check('工作区标题行出现批量管理入口', Number(triggerCount) === 1, `找到 ${triggerCount} 个`)
 
+  const enterAt = Date.now()
   await evaluate(page, 'document.querySelector("[data-dsh-session-delete-batch] button").click()')
-  await sleep(800)
-  const boxes = await evaluate(page, 'document.querySelectorAll("input[type=checkbox][aria-label=选择此会话]").length')
-  check('会话行前面出现勾选框', Number(boxes) >= 1, `${boxes} 个勾选框`)
+  const boxes = await waitFor('会话行勾选框出现', async () => {
+    const count = await evaluate(page, 'document.querySelectorAll("input[type=checkbox][aria-label=选择此会话]").length')
+    return Number(count) >= 1 ? count : undefined
+  }, 3000).catch(() => 0)
+  const enterMs = Date.now() - enterAt
+  check('会话行前面出现勾选框', Number(boxes) >= 1, `${boxes} 个勾选框，${enterMs}ms`)
+  check('勾选框在 1.2s 内出现', Number(boxes) >= 1 && enterMs <= 1200, `${enterMs}ms`)
 
   const toolbar = await evaluate(page, 'document.querySelector("[role=region][aria-label=批量管理]") !== null')
   check('底部批量操作栏出现', toolbar === true)
@@ -223,11 +229,40 @@ try {
   })()`)
   if (dismissedOnboarding === true) await sleep(600)
   await sleep(400)
-  const shot = await page.send('Page.captureScreenshot', { format: 'png' })
-  if (shot.result?.data !== undefined) {
+  // 先截一张多选模式下的界面（勾选框 + 底部批量栏）。
+  await sleep(400)
+  const shotBefore = await page.send('Page.captureScreenshot', { format: 'png' })
+  if (shotBefore.result?.data !== undefined) {
     const { writeFile } = await import('node:fs/promises')
-    await writeFile(SHOT, Buffer.from(shot.result.data, 'base64'))
+    await writeFile(SHOT, Buffer.from(shotBefore.result.data, 'base64'))
     console.log(`截图：${SHOT}`)
+  }
+
+  // 真实执行一次「移入回收站」，验证删除后列表及时刷新（残留行消失，避免点开 404）。
+  const selectedId = await evaluate(page, 'document.querySelector("[data-dsh-session-delete-select]")?.getAttribute("data-dsh-session-delete-select") ?? null')
+  check('取到勾选会话的 ID', typeof selectedId === 'string' && selectedId !== '', String(selectedId))
+  const clicked = await evaluate(page, `(() => {
+    const toolbar = document.querySelector('[role=region][aria-label=批量管理]')
+    const button = [...toolbar.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '移入回收站')
+    if (button === undefined) return false
+    button.click()
+    return true
+  })()`)
+  check('点击批量移入回收站', clicked === true)
+  const rowGone = await waitFor('删除后侧栏行消失', async () => {
+    const present = await evaluate(page, `document.querySelector('[data-row-key="session:${selectedId}"]') !== null`)
+    return present === false
+  }, 8000).then(() => true).catch(() => false)
+  check('删除后侧栏行及时消失', rowGone === true, `残留行 session:${selectedId}`)
+  const toolbarGone = await evaluate(page, 'document.querySelector("[role=region][aria-label=批量管理]") === null')
+  check('批量成功后退出多选模式', toolbarGone === true)
+
+  await sleep(300)
+  const shotAfter = await page.send('Page.captureScreenshot', { format: 'png' })
+  if (shotAfter.result?.data !== undefined) {
+    const { writeFile } = await import('node:fs/promises')
+    await writeFile(SHOT_AFTER, Buffer.from(shotAfter.result.data, 'base64'))
+    console.log(`截图：${SHOT_AFTER}`)
   }
   page.close()
   browser.close()
