@@ -102,6 +102,7 @@
       useEffect(() => {
         const onKeyDown = (event) => {
           if (event.key === 'Escape' && busy === '') {
+            event.stopImmediatePropagation()
             dialogStore.close()
             return
           }
@@ -131,6 +132,9 @@
 
       const session = state.data
       const running = session?.running === true
+      let uiWorkspace
+      try { uiWorkspace = ctx.uiWorkspace ?? ctx.get?.('uiWorkspace') } catch { uiWorkspace = undefined }
+      const isCurrent = uiWorkspace?.mainReference?.sessionId === request.sessionId
       const runningChildren = Array.isArray(session?.descendants) ? session.descendants.filter(item => item.running === true).length : 0
       const blocked = runningChildren > 0 || (running && !stopFirst)
       const close = () => { if (busy === '') dialogStore.close() }
@@ -189,6 +193,7 @@
         const stateText = running ? t('field.state.running') : t('field.state.idle')
         children.push(h('div', { style: styles.fieldRow, key: 'fields' },
           h(Field, { label: t('field.sessionId') }, h('code', { style: { fontSize: '12px' } }, shortId(session.sessionId))),
+          h(Field, { label: t('field.current') }, isCurrent ? t('field.current.yes') : t('field.current.no')),
           h(Field, { label: t('field.workspace') }, session.workspace === null || session.workspace === undefined
             ? '—'
             : `${session.workspace.title || session.workspace.path}（${session.workspace.path}）`),
@@ -289,18 +294,22 @@
       )
     }
 
-    /** 设置页「会话回收站」。 */
+    /** 设置页「会话回收站」：逐条还原/彻底删除 + 勾选批量还原。 */
     function TrashSettingsSection({ ctx, t }) {
       const [state, setState] = useState({ phase: 'loading', entries: [], usage: { count: 0, bytes: 0 }, settings: null, error: '' })
       const [busy, setBusy] = useState('')
-      const [armed, setArmed] = useState('')
+      const [selected, setSelected] = useState(() => new Set())
+      const [confirmPurge, setConfirmPurge] = useState('')
+      const [confirmEmpty, setConfirmEmpty] = useState(false)
 
       const load = useCallback(async () => {
         setState(previous => ({ ...previous, phase: previous.entries.length === 0 ? 'loading' : previous.phase, error: '' }))
         try {
           const result = await apiGet('/trash')
           if (result?.ok === true) {
-            setState({ phase: 'ready', entries: result.entries ?? [], usage: result.usage ?? { count: 0, bytes: 0 }, settings: result.settings ?? null, error: '' })
+            const entries = result.entries ?? []
+            setState({ phase: 'ready', entries, usage: result.usage ?? { count: 0, bytes: 0 }, settings: result.settings ?? null, error: '' })
+            setSelected(previous => new Set([...previous].filter(trashId => entries.some(entry => entry.trashId === trashId))))
           } else {
             setState(previous => ({ ...previous, phase: 'error', error: errorText(result, t('settings.loadFailed', { detail: '未知错误' })) }))
           }
@@ -310,6 +319,9 @@
       }, [t])
 
       useEffect(() => { void load() }, [load])
+
+      const entries = state.entries
+      const selectedEntries = entries.filter(entry => selected.has(entry.trashId))
 
       const act = async (kind, work) => {
         setBusy(kind)
@@ -326,8 +338,34 @@
           noticeStore.show({ kind: 'error', text: t('settings.actionFailed', { detail: error instanceof Error ? error.message : String(error) }) })
         } finally {
           setBusy('')
-          setArmed('')
+          setConfirmPurge('')
+          setConfirmEmpty(false)
         }
+      }
+
+      const batchRestore = async () => {
+        if (selectedEntries.length === 0) return
+        setBusy('batch-restore')
+        let ok = 0
+        let failed = 0
+        for (const entry of selectedEntries) {
+          try {
+            const result = await apiPost('/restore', { sessionId: entry.sessionId })
+            if (result?.ok === true) ok += 1
+            else failed += 1
+          } catch {
+            failed += 1
+          }
+        }
+        noticeStore.show({
+          kind: failed > 0 ? 'warn' : 'ok',
+          text: failed > 0 ? `${t('settings.batchRestoreDone', { n: ok })}，失败 ${failed} 条` : t('settings.batchRestoreDone', { n: ok }),
+          sticky: failed > 0,
+        })
+        refreshSessionList(ctx)
+        await load()
+        setSelected(new Set())
+        setBusy('')
       }
 
       const saveSettings = async (patch) => {
@@ -343,8 +381,27 @@
         }
       }
 
+      const toggleEntry = trashId => setSelected(previous => {
+        const next = new Set(previous)
+        if (next.has(trashId)) next.delete(trashId)
+        else next.add(trashId)
+        return next
+      })
+      const toggleAll = () => setSelected(previous => (
+        previous.size >= entries.length && entries.length > 0 ? new Set() : new Set(entries.map(entry => entry.trashId))
+      ))
+
       const settings = state.settings ?? { retentionDays: 30, sweepOnStartup: true }
-      const rows = state.entries.map(entry => h('tr', { key: entry.trashId },
+      const rows = entries.map(entry => h('tr', { key: entry.trashId },
+        h('td', { style: { ...styles.td, width: '28px' } },
+          h('input', {
+            type: 'checkbox',
+            checked: selected.has(entry.trashId),
+            disabled: busy !== '',
+            'aria-label': t('settings.selectAll'),
+            onChange: () => toggleEntry(entry.trashId),
+          }),
+        ),
         h('td', { style: styles.td },
           h('div', { style: { fontWeight: 500 } }, entry.title || t('settings.untitled')),
           h('div', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' } }, shortId(entry.sessionId)),
@@ -364,11 +421,8 @@
             type: 'button',
             style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' },
             disabled: busy !== '',
-            onClick: () => {
-              if (armed !== entry.trashId) { setArmed(entry.trashId); return }
-              void act('purge', () => apiPost('/purge', { sessionId: entry.sessionId }))
-            },
-          }, armed === entry.trashId ? t('settings.purgeConfirm') : t('settings.purge')),
+            onClick: () => setConfirmPurge(entry.trashId),
+          }, t('settings.purge')),
         ),
       ))
 
@@ -382,10 +436,51 @@
           ),
           state.phase === 'loading' ? h('p', { style: styles.hint }, t('settings.loading')) : null,
           state.error !== '' ? h('p', { style: styles.error }, state.error) : null,
-          state.phase === 'ready' && state.entries.length === 0 ? h('p', { style: styles.hint }, t('settings.empty')) : null,
-          state.entries.length > 0 ? h('div', { style: { marginTop: '10px', overflowX: 'auto' } },
+          state.phase === 'ready' && entries.length === 0 ? h('p', { style: styles.hint }, t('settings.empty')) : null,
+          entries.length > 0 ? h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', flexWrap: 'wrap' } },
+            h('label', { style: styles.checkboxRow },
+              h('input', { type: 'checkbox', checked: selected.size >= entries.length && entries.length > 0, disabled: busy !== '', onChange: toggleAll }),
+              h('span', null, t('settings.selectAll')),
+            ),
+            h('span', { style: styles.hint }, t('settings.selectedCount', { n: selected.size })),
+            h('button', {
+              type: 'button',
+              style: styles.smallButton,
+              disabled: busy !== '' || selected.size === 0,
+              onClick: () => void batchRestore(),
+            }, t('settings.batchRestore')),
+          ) : null,
+          confirmPurge !== '' ? h('div', { style: { marginTop: '10px', padding: '10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-state-error-primary)' } },
+            h('p', { style: { ...styles.hint, color: 'var(--dsw-alias-state-error-primary)' } }, t('settings.confirmPurgeHint')),
+            h('div', { style: { display: 'flex', gap: '8px' } },
+              h('button', { type: 'button', style: styles.smallButton, disabled: busy !== '', onClick: () => setConfirmPurge('') }, t('settings.confirmCancel')),
+              h('button', {
+                type: 'button',
+                style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' },
+                disabled: busy !== '',
+                onClick: () => {
+                  const entry = entries.find(item => item.trashId === confirmPurge)
+                  if (entry !== undefined) void act('purge', () => apiPost('/purge', { sessionId: entry.sessionId }))
+                },
+              }, t('settings.confirmPurgeYes')),
+            ),
+          ) : null,
+          confirmEmpty ? h('div', { style: { marginTop: '10px', padding: '10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-state-error-primary)' } },
+            h('p', { style: { ...styles.hint, color: 'var(--dsw-alias-state-error-primary)' } }, t('settings.confirmEmptyHint')),
+            h('div', { style: { display: 'flex', gap: '8px' } },
+              h('button', { type: 'button', style: styles.smallButton, disabled: busy !== '', onClick: () => setConfirmEmpty(false) }, t('settings.confirmCancel')),
+              h('button', {
+                type: 'button',
+                style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' },
+                disabled: busy !== '',
+                onClick: () => void act('empty', () => apiPost('/empty', { onlyExpired: false })),
+              }, t('settings.confirmEmptyYes')),
+            ),
+          ) : null,
+          entries.length > 0 ? h('div', { style: { marginTop: '10px', overflowX: 'auto' } },
             h('table', { style: styles.table },
               h('thead', null, h('tr', null,
+                h('th', { style: styles.th }, ''),
                 h('th', { style: styles.th }, t('settings.column.title')),
                 h('th', { style: styles.th }, t('settings.column.workspace')),
                 h('th', { style: styles.th }, t('settings.column.deletedAt')),
@@ -428,13 +523,9 @@
               type: 'button',
               style: { ...styles.smallButton, color: 'var(--dsw-alias-state-error-primary)' },
               disabled: busy !== '',
-              onClick: () => {
-                if (armed !== 'empty') { setArmed('empty'); return }
-                void act('empty', () => apiPost('/empty', { onlyExpired: false }))
-              },
-            }, armed === 'empty' ? t('settings.emptyConfirm') : t('settings.emptyTrash')),
+              onClick: () => setConfirmEmpty(true),
+            }, t('settings.emptyTrash')),
           ),
         ),
       )
     }
-

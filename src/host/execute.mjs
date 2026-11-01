@@ -14,7 +14,7 @@ import { assertSessionId } from './paths.mjs'
 import { collectSessionMeta, readSnapshotIndex } from './session-meta.mjs'
 import { flushLiveSession, detachLiveSession, cleanWorkspaceRecords, cleanProjectionCache, restoreWorkspaceRecords } from './detach.mjs'
 import { stopSessionActivity, waitQuiescent } from './stop.mjs'
-import { emptyTrash, findEntryBySession, moveIntoTrash, purgeEntry, readSettings, restoreEntry, sweepExpired } from './trash.mjs'
+import { emptyTrash, findEntryBySession, listEntries, moveIntoTrash, purgeEntry, readSettings, restoreEntry, sweepExpired } from './trash.mjs'
 
 /** 一次删除事务允许携带的最大会话数（根 + 子代理），防止异常树把请求拖死。 */
 const MAX_TREE = 200
@@ -90,13 +90,18 @@ async function detachAll(ctx, ids, steps) {
  * @param {string[]} leftovers - 残留收集。
  * @returns {Promise<void>} 完成。
  */
-async function cleanAll(ctx, ids, steps, warnings, leftovers) {
+async function cleanWorkspaceOnly(ctx, ids, steps, warnings) {
   for (const id of ids) {
     const workspace = await cleanWorkspaceRecords(ctx, id)
     for (const entry of workspace.steps) {
       step(steps, `${entry.step}:${id}`, entry.ok, entry.detail)
       if (!entry.ok) warnings.push(`${id}：${entry.detail}`)
     }
+  }
+}
+
+async function cleanProjectionOnly(ctx, ids, steps, warnings, leftovers) {
+  for (const id of ids) {
     const projection = await cleanProjectionCache(ctx, id)
     for (const entry of projection.steps) {
       step(steps, `${entry.step}:${id}`, entry.ok, entry.detail)
@@ -104,6 +109,26 @@ async function cleanAll(ctx, ids, steps, warnings, leftovers) {
     }
     leftovers.push(...projection.leftovers)
   }
+}
+
+async function cleanAll(ctx, ids, steps, warnings, leftovers) {
+  await cleanWorkspaceOnly(ctx, ids, steps, warnings)
+  await cleanProjectionOnly(ctx, ids, steps, warnings, leftovers)
+}
+
+
+/** 清理已从回收站移除的条目的投影缓存（回收站模式保留、彻底清理时补删）。 */
+async function cleanPurgedProjections(ctx, entries) {
+  const warnings = []
+  for (const entry of entries) {
+    for (const member of entry.members ?? []) {
+      const projection = await cleanProjectionCache(ctx, member.sessionId)
+      for (const item of projection.steps) {
+        if (!item.ok) warnings.push(`${member.sessionId}：${item.detail}`)
+      }
+    }
+  }
+  return warnings
 }
 
 /**
@@ -253,7 +278,9 @@ export async function executeDelete(ctx, input) {
     step(steps, 'purge', true, '已彻底删除会话目录')
   }
 
-  await cleanAll(ctx, ids, steps, warnings, leftovers)
+  // 移入回收站时保留投影缓存：还原后侧栏标题/元数据直接可用；彻底删除/清空/过期清理时才清。
+  if (mode === 'trash') await cleanWorkspaceOnly(ctx, ids, steps, warnings)
+  else await cleanAll(ctx, ids, steps, warnings, leftovers)
   broadcastRemoved(ctx, ids, steps)
 
   for (const member of members) {
@@ -321,8 +348,9 @@ export async function executeRestore(ctx, sessionId) {
   return {
     ok: true,
     code: 'ok',
-    message: '已还原会话',
+    message: entry.archived === true ? '已还原会话（仍为归档状态）' : '已还原会话',
     sessionId: entry.sessionId,
+    archived: entry.archived === true,
     restored: entry.members.map(member => member.sessionId),
     steps,
     warnings,
@@ -347,12 +375,21 @@ export async function executePurgeTrashEntry(ctx, sessionId) {
   } catch (error) {
     throw new DeleteError(ERROR_CODES.purgeFailed, error instanceof Error ? error.message : String(error), { status: 500 })
   }
+  // 回收站模式保留了投影缓存，彻底删除时补清。
+  const cleanupWarnings = []
+  for (const member of entry.members) {
+    const projection = await cleanProjectionCache(ctx, member.sessionId)
+    for (const item of projection.steps) {
+      if (!item.ok) cleanupWarnings.push(`${member.sessionId}：${item.detail}`)
+    }
+  }
   return {
     ok: true,
     code: 'ok',
     message: '已彻底删除回收站条目',
     sessionId: entry.sessionId,
     freedBytes,
+    warnings: cleanupWarnings,
     durationMs: Date.now() - startedAt,
   }
 }
@@ -364,6 +401,7 @@ export async function executePurgeTrashEntry(ctx, sessionId) {
  */
 export async function executeEmptyTrash(ctx) {
   const startedAt = Date.now()
+  const before = await listEntries()
   const result = await emptyTrash()
   if (result.failures.length > 0) {
     throw new DeleteError(ERROR_CODES.emptyFailed, result.failures.map(item => `${item.trashId}: ${item.reason}`).join('；'), {
@@ -371,6 +409,9 @@ export async function executeEmptyTrash(ctx) {
       extra: { removed: result.removed, freedBytes: result.freedBytes },
     })
   }
+  const after = await listEntries()
+  const remainingIds = new Set(after.map(entry => entry.trashId))
+  const warnings = await cleanPurgedProjections(ctx, before.filter(entry => !remainingIds.has(entry.trashId)))
   const remainingNote = result.remaining > 0 ? `，仍有 ${result.remaining} 条未处理` : ''
   return {
     ok: true,
@@ -379,6 +420,7 @@ export async function executeEmptyTrash(ctx) {
     removed: result.removed,
     remaining: result.remaining,
     freedBytes: result.freedBytes,
+    warnings,
     durationMs: Date.now() - startedAt,
   }
 }
@@ -391,6 +433,7 @@ export async function executeEmptyTrash(ctx) {
 export async function executeSweep(ctx) {
   const startedAt = Date.now()
   const settings = await readSettings()
+  const before = await listEntries()
   const result = await sweepExpired(settings)
   if (result.failures.length > 0) {
     throw new DeleteError(ERROR_CODES.emptyFailed, result.failures.map(item => `${item.trashId}: ${item.reason}`).join('；'), {
@@ -398,6 +441,9 @@ export async function executeSweep(ctx) {
       extra: { removed: result.removed, freedBytes: result.freedBytes },
     })
   }
+  const after = await listEntries()
+  const remainingIds = new Set(after.map(entry => entry.trashId))
+  const warnings = await cleanPurgedProjections(ctx, before.filter(entry => !remainingIds.has(entry.trashId)))
   const remainingNote = result.remaining > 0 ? `，仍有 ${result.remaining} 条未处理` : ''
   return {
     ok: true,
@@ -406,6 +452,7 @@ export async function executeSweep(ctx) {
     removed: result.removed,
     remaining: result.remaining,
     freedBytes: result.freedBytes,
+    warnings,
     durationMs: Date.now() - startedAt,
   }
 }
