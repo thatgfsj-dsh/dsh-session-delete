@@ -1,5 +1,21 @@
 # 更新日志
 
+## v0.1.9（2026-11-08）
+
+### 适配 DSH 0.2.2-rc.1
+
+- 宿主兼容性核对：`sessions.liveEntryFor/detachEntered/flush`、`sessionPersistence.locate/list/stat`、`workspaceRegistry`（attach/detach/archive/pin/stopSessionActivity）、`session_projcache` 存储域、`workspace/session-activity|stop`、`api-session/removed` 在 0.2.2-rc.1 上均未破坏。
+- DSH 0.2.2 调整了 store-owned Session 的 `append` 门禁（enter 前/摘除后禁止写入）；删除流程「flush → 摘活体 → 搬目录 → 后台残骸补检」已在新版实测，活体删除（146ms）、回收站、还原、重开后重新打开会话均正常。
+- 客户端 UI 重绘（新增 `sidebar.session.row.leading/trailing/hover`）后回归：侧栏批量管理入口、会话行勾选框、行内删除按钮、删除确认弹窗、设置页回收站、还原后侧栏自动刷新全部通过（headless Chrome 临时实例）。
+- `engines.dsh` 下限收紧到实测最低版本：`>=0.2.1-rc.2 <0.3.0-0`（DSH 按 `includePrerelease` 判定，0.2.2-rc.1 可安装）。
+- README 更新兼容性说明；`docs/screenshots/` 在新 UI 上重新生成。
+
+### 验证
+
+- `node --test`：58 项（Linux 54 通过 + 4 个 Windows 专用跳过）。
+- 隔离 E2E、批量管理 UI 冒烟、活体删除/还原/重开 E2E、设置页还原后列表刷新冒烟：全部通过。
+- `client.js` 与源码同步。
+
 ## v0.1.8（2026-11-02）
 
 ### 红蓝对抗后的删除/回收站/还原加固（Issue #17 / PR #18）

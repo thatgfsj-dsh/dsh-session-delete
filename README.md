@@ -87,7 +87,7 @@
 
 ## 安装
 
-插件要求 DSH `0.2.x`（`engines.dsh: ">=0.2.0-rc.1 <0.3.0-0"`）。
+插件要求 DSH `0.2.x`（`engines.dsh: ">=0.2.1-rc.2 <0.3.0-0"`；DSH 用 `includePrerelease` 判定，`0.2.2-rc.1` 等 0.2.x 预发布版均可安装）。
 
 ```bash
 # 从本地目录（开发时推荐，改完文件不用重装）
@@ -163,9 +163,13 @@ $DSH_HOME/session-delete/
 
 ## 兼容性
 
-- 目标：DSH `0.2.x`（开发与验证环境 `0.2.1-rc.2`）。
+- 目标：DSH `0.2.x`。
+- **v0.1.9 已在 `0.2.2-rc.1` 上完整回归**（同时保留 `0.2.1-rc.2` 的历史验证）：
+  - 宿主 API 未破坏：`sessions.liveEntryFor/detachEntered/flush`、`sessionPersistence.locate/list/stat`、`workspaceRegistry`、`session_projcache` 域、`workspace/session-activity|stop` 均可用；
+  - 0.2.2 的「store-owned Session 在摘除后禁止 append」门禁不影响删除顺序（flush → 摘活体 → 搬目录）；
+  - 客户端 UI 重绘（新增 `sidebar.session.row.leading/trailing/hover` 插槽）后，侧栏批量入口、会话行勾选框、行内删除按钮、设置页回收站、还原后列表刷新均通过冒烟。
 - 不兼容 `0.1.x`。
-- 依赖官方内部摘除通道 `liveEntryFor` / `detachEntered`：当前版本存在；缺失时插件降级为「删盘 + 提示需重启宿主」，并写入结果警告。
+- 依赖官方内部摘除通道 `liveEntryFor` / `detachEntered`：`0.2.x` 当前版本存在；缺失且会话仍活着时插件会 409 中止，不会「删盘不摘活体」。
 
 ## 开发与测试
 
